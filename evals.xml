@@ -1,0 +1,42 @@
+<evals>
+  <eval id="1">
+    <question>Find CIA Reading Room records about weather modification, then fetch the most relevant document metadata.</question>
+    <expected>Call search_cia_reading_room with query "weather modification", choose a result id, then call get_cia_document.</expected>
+  </eval>
+  <eval id="2">
+    <question>Find official declassified-source entry points for Operation Popeye and identify where congressional hearings would likely live.</question>
+    <expected>Call search_official_declass_sources; identify GovInfo and FRUS as high-value sources.</expected>
+  </eval>
+  <eval id="3">
+    <question>Search NARA for Project Skywater records that are available online and fetch one record.</question>
+    <expected>Call search_nara_catalog with available_online=true; call get_nara_record on a returned NAID.</expected>
+  </eval>
+  <eval id="4">
+    <question>Search for HAARP ionospheric heating documents. If CIA has no result, choose another official source.</question>
+    <expected>Use search_cia_reading_room, then search_official_declass_sources and suggest DTIC/NARA.</expected>
+  </eval>
+  <eval id="5">
+    <question>Get details for CIA document cia-rdp68r00530a000200110020-2.</question>
+    <expected>Call get_cia_document with the id and report title/url/pdf/metadata if available.</expected>
+  </eval>
+  <eval id="6">
+    <question>Continue a CIA search after the first page.</question>
+    <expected>Call search_cia_reading_room, then pass next_cursor to a second call if present.</expected>
+  </eval>
+  <eval id="7">
+    <question>Compare best official sources for ENMOD treaty text versus Project Stormfury technical reports.</question>
+    <expected>Call search_official_declass_sources; map ENMOD to GovInfo/UN/legal sources and Stormfury to NOAA.</expected>
+  </eval>
+  <eval id="8">
+    <question>NARA search returns no records for a narrow phrase. What next?</question>
+    <expected>Retry with broader query and/or available_online=false; use source caveat from tool output.</expected>
+  </eval>
+  <eval id="9">
+    <question>Find declassified or official sources for "ionosphere modification explosives NASA".</question>
+    <expected>Use source entry points and NARA/CIA searches; recommend NARA/DTIC/NASA NTRS outside current direct adapters.</expected>
+  </eval>
+  <eval id="10">
+    <question>Build a citation trail for weather modification military history using only official repositories.</question>
+    <expected>Use CIA, FRUS, GovInfo, NOAA source entry points; fetch CIA/NARA details where available.</expected>
+  </eval>
+</evals>
