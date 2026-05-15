@@ -2,7 +2,7 @@
 
 ## Reader And Goal
 
-This document is for an engineer implementing the next version of the FOIA Search MCP server. After reading it, they should be able to scaffold a new Rust crate, port only the useful pieces from the TypeScript draft, and implement PDF ingestion, caching, local indexing, source adapters, and MCP tools in a phased way.
+This document is for an engineer implementing the Rust FOIA Search MCP server. After reading it, they should be able to understand the current crate, port only the useful pieces from the TypeScript draft, and implement PDF ingestion, caching, local indexing, source adapters, and MCP tools in a phased way.
 
 The current TypeScript server should be treated as a prototype for source behavior and tool naming, not as the implementation base. The production direction is a new Rust crate with selective reuse from the existing Rust paper-search server.
 
@@ -197,6 +197,25 @@ Chunk fields:
 
 Keep raw metadata and normalized fields. FOIA sources are uneven; the raw record is often needed for later adapter fixes.
 
+Current ingestion planning stores full source metadata under `source_metadata` in document
+`metadata_json`, alongside an `ingest_plan` object describing the selected asset, cache policy,
+and source metadata keys.
+
+## Ingestion Lifecycle
+
+Queued ingestion jobs now support explicit claim leases, monotonic progress, stage updates,
+deduplicated warnings, error recording, completion, failure, and interruption. Resume logic should
+claim queued, interrupted, or expired running jobs and continue from the stored stage/progress.
+
+Asset downloads write successful bodies to the content-addressed file store, record cache
+provenance when source policy allows persistence, and revalidate with ETag/Last-Modified. The
+default downloader rejects redirects instead of following them implicitly; any future redirect
+support must validate each hop before fetching.
+
+PDF text extraction can use an external `pdftotext` binary with structured arguments, bounded
+stderr, temp output validation, timeout handling, and quality warnings for blank or low-density
+embedded text.
+
 ## Source Adapter Interface
 
 Each source adapter should implement a common async trait:
@@ -388,7 +407,7 @@ The target is at least 8 of 10 successful model completions without handholding.
 
 ### Phase 1: Rust Scaffold
 
-Create the Rust crate, MCP stdio server, config, logging, source registry, error types, and placeholder tools. Port no ingestion behavior yet. Confirm the server works under MCP Inspector.
+Create the Rust crate, MCP stdio server, config, logging, source registry, error types, and initial tool registrations. Port no ingestion behavior yet. Confirm the server works under MCP Inspector.
 
 ### Phase 2: Storage And Jobs
 

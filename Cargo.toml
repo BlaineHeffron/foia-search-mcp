@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1"
-reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls", "stream"] }
 rmcp = { version = "0.14", features = ["server", "transport-io", "macros"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 schemars = "1"

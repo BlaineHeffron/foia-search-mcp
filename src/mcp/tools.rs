@@ -357,9 +357,9 @@ impl ServerHandler for FoiaSearchServer {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(
-                "Search, ingest, and retrieve FOIA/declassified documents. This Rust scaffold \
-                 exposes the planned MCP tool surface with structured placeholder responses while \
-                 source adapters, ingestion, store, and index modules are implemented."
+                "Search, ingest, and retrieve FOIA/declassified documents. The Rust server \
+                 exposes source search, durable ingestion jobs, local document search, and \
+                 document text retrieval backed by SQLite storage and source provenance."
                     .into(),
             ),
         }

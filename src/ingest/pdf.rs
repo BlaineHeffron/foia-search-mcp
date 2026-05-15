@@ -2,6 +2,8 @@ use crate::ingest::chunk::PageText;
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExtractedText {
@@ -13,6 +15,23 @@ pub struct ExtractedText {
 pub enum TextExtraction {
     Io(std::io::Error),
     EmptyInput,
+    UnavailableBinary {
+        binary: PathBuf,
+    },
+    CommandFailed {
+        binary: PathBuf,
+        status: String,
+        stderr: String,
+    },
+    Timeout {
+        binary: PathBuf,
+        timeout: Duration,
+        stderr: String,
+    },
+    InvalidOutputPath {
+        path: PathBuf,
+        reason: String,
+    },
 }
 
 impl fmt::Display for TextExtraction {
@@ -20,6 +39,37 @@ impl fmt::Display for TextExtraction {
         match self {
             Self::Io(err) => write!(f, "text extraction I/O error: {err}"),
             Self::EmptyInput => write!(f, "text extraction produced no pages"),
+            Self::UnavailableBinary { binary } => write!(
+                f,
+                "configured text extraction binary is unavailable: {}",
+                binary.display()
+            ),
+            Self::CommandFailed {
+                binary,
+                status,
+                stderr,
+            } => write!(
+                f,
+                "text extraction command failed: {} exited with {status}: {stderr}",
+                binary.display()
+            ),
+            Self::Timeout {
+                binary,
+                timeout,
+                stderr,
+            } => write!(
+                f,
+                "text extraction command timed out after {}s: {}: {stderr}",
+                timeout.as_secs_f32(),
+                binary.display()
+            ),
+            Self::InvalidOutputPath { path, reason } => {
+                write!(
+                    f,
+                    "invalid text extraction output path {}: {reason}",
+                    path.display()
+                )
+            }
         }
     }
 }
@@ -69,8 +119,8 @@ pub fn extracted_text_from_form_feed(text: &str) -> Result<ExtractedText, TextEx
     let pages = normalized_pages[first_text_page..=last_text_page].to_vec();
 
     Ok(ExtractedText {
+        warnings: embedded_text_quality_warnings(&pages),
         pages,
-        warnings: Vec::new(),
     })
 }
 
@@ -81,4 +131,36 @@ fn normalize_page_text(text: &str) -> String {
         .join("\n")
         .trim()
         .to_owned()
+}
+
+fn embedded_text_quality_warnings(pages: &[PageText]) -> Vec<String> {
+    let blank_pages = pages
+        .iter()
+        .filter(|page| page.text.trim().is_empty())
+        .count();
+    let non_blank_pages = pages.len().saturating_sub(blank_pages);
+    let mut warnings = Vec::new();
+
+    if blank_pages > 0 {
+        warnings.push(format!(
+            "embedded PDF text contains {blank_pages} blank page(s) among {} parsed page(s); OCR fallback may improve coverage",
+            pages.len()
+        ));
+    }
+
+    if non_blank_pages > 0 {
+        let visible_chars = pages
+            .iter()
+            .filter(|page| !page.text.trim().is_empty())
+            .map(|page| page.text.chars().filter(|ch| !ch.is_whitespace()).count())
+            .sum::<usize>();
+        let average_visible_chars = visible_chars / non_blank_pages;
+        if average_visible_chars < 40 {
+            warnings.push(format!(
+                "embedded PDF text has low density ({average_visible_chars} visible chars/page); OCR fallback may improve quality"
+            ));
+        }
+    }
+
+    warnings
 }

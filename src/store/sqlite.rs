@@ -13,6 +13,11 @@ pub enum StoreError {
         field: &'static str,
         value: String,
     },
+    InvalidIngestionJobProgress(f64),
+    InvalidIngestionJobState {
+        job_key: String,
+        message: String,
+    },
     InvalidPageRange(String),
     MissingDocument(String),
     MissingIngestionJob(String),
@@ -29,6 +34,12 @@ impl fmt::Display for StoreError {
             Self::Sqlite(err) => write!(f, "sqlite error: {err}"),
             Self::InvalidDocumentKey(key) => write!(f, "invalid document_key: {key}"),
             Self::InvalidJson { field, value } => write!(f, "invalid JSON for {field}: {value}"),
+            Self::InvalidIngestionJobProgress(progress) => {
+                write!(f, "invalid ingestion job progress: {progress}")
+            }
+            Self::InvalidIngestionJobState { job_key, message } => {
+                write!(f, "invalid ingestion job state for {job_key}: {message}")
+            }
             Self::InvalidPageRange(message) => write!(f, "invalid page range: {message}"),
             Self::MissingDocument(key) => write!(f, "document not found: {key}"),
             Self::MissingIngestionJob(key) => write!(f, "ingestion job not found: {key}"),
