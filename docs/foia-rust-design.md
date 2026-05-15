@@ -120,10 +120,10 @@ $FOIA_SEARCH_DATA_DIR/
     other/
       sha256/<hash>
   text/
-    documents/<document_id>.txt
-    pages/<document_id>/<page_number>.txt
+    documents/<document_key>.txt
+    pages/<document_key>/<page_number>.txt
   ocr/
-    pages/<document_id>/<page_number>.txt
+    pages/<document_key>/<page_number>.txt
   index/
     sqlite/
     tantivy/
@@ -137,13 +137,16 @@ The file store should be content-addressed by SHA-256. Database rows should poin
 
 SQLite is the canonical store for normalized metadata, page text, chunks, job state, and FTS rows. Files under `text/` and `ocr/` are derived audit/debug artifacts only; they may help inspect extractor output, but resume and search logic must reconcile back to SQLite and may delete or regenerate them. Original PDFs, HTML, and other fetched assets remain canonical content-addressed blobs.
 
+Never use source IDs directly in filesystem paths. Every document should get a filesystem-safe internal `document_key`, such as a generated UUID or stable hash over source plus source ID. Store external source IDs and URLs separately in SQLite.
+
 ## Metadata Model
 
 Use one normalized document model across sources.
 
 Core fields:
 
-- `id`: local stable ID, usually `<source>:<source_id>`.
+- `id`: user-facing stable ID, usually `<source>:<source_id>`, never used directly as a file path.
+- `document_key`: filesystem-safe internal key used for derived text/OCR paths.
 - `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, or future adapter name.
 - `source_id`: ID from the original source.
 - `title`
@@ -220,7 +223,7 @@ pub trait SourceAdapter: Send + Sync {
 
 Search should return normalized records and an opaque cursor. Do not expose source page numbers as MCP pagination unless the source only supports page numbers internally. The adapter should hide that and return a cursor the model can pass back.
 
-For the MVP, `search_sources` should paginate one source at a time. If federated multi-source search is added later, its opaque cursor must encode per-source cursors, exhausted-source flags, query/options hash, and merge/ranking state so subsequent calls cannot mix incompatible searches.
+For the MVP, source search should paginate one source at a time and the MCP schema should require exactly one `source`. If federated multi-source search is added later, its opaque cursor must encode per-source cursors, exhausted-source flags, query/options hash, and merge/ranking state so subsequent calls cannot mix incompatible searches.
 
 ## Source Plan
 
@@ -301,7 +304,7 @@ Expose task-shaped tools, not raw adapter endpoints.
 Initial tools:
 
 - `list_sources`: show enabled sources, auth status, rate-limit notes, and cache policy notes.
-- `search_sources`: search one or more official sources for candidate records.
+- `search_source`: search one official source for candidate records. Multi-source search is deferred until federated cursor state is designed.
 - `get_source_record`: fetch normalized metadata and assets for one source record.
 - `ingest_document`: ingest by source/id or, when explicitly enabled, a validated URL/local file; return an ingestion job.
 - `get_ingestion_job`: inspect job status, progress, warnings, and next action.
