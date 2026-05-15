@@ -275,7 +275,7 @@ If direct URL ingestion is enabled, enforce:
 - `https` only unless explicitly configured otherwise.
 - Source or host allowlists.
 - Redirect limits and redirect target revalidation.
-- DNS resolution checks that block private, loopback, link-local, multicast, and metadata-service address ranges.
+- A controlled download path that resolves, validates, and pins candidate IPs for the actual connection. Revalidate after every redirect, preserve correct Host/SNI behavior, and reject any final peer address in private, loopback, link-local, multicast, or metadata-service address ranges. Do not rely on a separate preflight DNS check followed by an unconstrained HTTP client request.
 - Maximum response size and maximum PDF page count.
 - Content-Type and file-signature validation.
 - Download timeouts and per-host concurrency limits.
