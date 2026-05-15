@@ -1,0 +1,22 @@
+[package]
+name = "foia-search"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server for FOIA and declassified-document research"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+rmcp = { version = "0.14", features = ["server", "transport-io", "macros"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
