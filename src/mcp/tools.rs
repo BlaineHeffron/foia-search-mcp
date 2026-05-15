@@ -12,10 +12,17 @@ use crate::{
     errors::FoiaSearchError,
     index::{FtsSearch, SearchQuery},
     mcp::output::json_result,
-    model::{IngestionJob, LocalDocument, LocalSearchHit, PlaceholderResponse, SearchPage},
+    model::{
+        IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit, SearchPage,
+    },
     sources::{cia::CiaAdapter, SearchOptions, SourceAdapter, SourceError, SourceStatus},
-    store::{SqliteStore, StoreError},
+    store::{
+        NewIngestionJob, SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob,
+        StoredPageText,
+    },
 };
+
+const MAX_TEXT_PAGE_RANGE: u32 = 50;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
@@ -103,7 +110,7 @@ impl FoiaSearchServer {
         Ok(Self {
             tool_router: Self::tool_router(),
             config: Arc::new(config),
-            sources: Arc::new(vec![Arc::new(CiaAdapter::default())]),
+            sources: Arc::new(vec![Arc::new(CiaAdapter::from_env())]),
         })
     }
 
@@ -118,9 +125,9 @@ impl FoiaSearchServer {
                 .find(|status| status.name == adapter.name())
             {
                 status.enabled = adapter.status() == SourceStatus::Enabled;
-                status.status = "parser_available".to_owned();
-                status.note =
-                    "Rust parser is available; network fetching is not wired yet.".to_owned();
+                status.status = "enabled".to_owned();
+                status.note = "CIA Reading Room adapter is wired for HTTP search and record fetch."
+                    .to_owned();
             }
         }
         json_result(&statuses)
@@ -177,21 +184,19 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<IngestDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
-        json_result(&IngestionJob {
-            id: format!("placeholder:{}", params.document_id),
-            status: "not_started".to_string(),
-            document_id: Some(params.document_id),
-            progress: 0.0,
-            next_actions: vec![
-                "Implement store::sqlite job persistence.".to_string(),
-                "Implement ingest::pipeline for asset fetch, text extraction, and OCR fallback."
-                    .to_string(),
-            ],
-            errors: vec![format!(
-                "Ingestion pipeline is not implemented; force={}.",
-                params.force.unwrap_or(false)
-            )],
-        })
+        let locator = parse_document_locator(&params.document_id)?;
+        let mut store = self.open_store()?;
+        let job = store
+            .create_ingestion_job(&NewIngestionJob {
+                job_key: format!("ingest:{}", params.document_id),
+                operation: "ingest".to_owned(),
+                source: locator.source,
+                source_id: Some(locator.source_id),
+                target_url: None,
+                next_action: queued_next_action("ingestion", params.force.unwrap_or(false)),
+            })
+            .map_err(store_error_to_mcp)?;
+        json_result(&ingestion_job_from_stored(job))
     }
 
     #[tool(
@@ -201,14 +206,11 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<GetIngestionJobParams>,
     ) -> Result<CallToolResult, McpError> {
-        json_result(&IngestionJob {
-            id: params.job_id,
-            status: "unknown".to_string(),
-            document_id: None,
-            progress: 0.0,
-            next_actions: vec!["Implement durable ingestion job lookup.".to_string()],
-            errors: vec!["Ingestion job store is not implemented.".to_string()],
-        })
+        let store = self.open_store()?;
+        let job = store
+            .get_ingestion_job_by_key(&params.job_id)
+            .map_err(ingestion_job_error_to_mcp)?;
+        json_result(&ingestion_job_from_stored(job))
     }
 
     #[tool(
@@ -245,49 +247,36 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Get normalized metadata and provenance for a locally ingested document. Placeholder scaffold: document store is not implemented yet."
+        description = "Get normalized metadata and provenance for a locally ingested document by public ID or local document_key."
     )]
     async fn get_document(
         &self,
         Parameters(params): Parameters<GetDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
-        json_result(&LocalDocument {
-            id: params.document_id,
-            title: "Document store not implemented".to_string(),
-            source: "unknown".to_string(),
-            source_id: "unknown".to_string(),
-            page_count: None,
-            warnings: vec!["No local document lookup was performed.".to_string()],
-        })
+        let store = self.open_store()?;
+        let document = store
+            .get_document_metadata(&params.document_id)
+            .map_err(document_lookup_error_to_mcp)?;
+        let response = local_document_from_stored(document)?;
+        json_result(&response)
     }
 
     #[tool(
-        description = "Get extracted or OCR text for a document, optionally constrained to a one-based inclusive page range. Placeholder scaffold: text store is not implemented yet."
+        description = "Get extracted or OCR text for a document by public ID or local document_key, constrained to a required one-based inclusive page range of at most 50 pages."
     )]
     async fn get_document_text(
         &self,
         Parameters(params): Parameters<GetDocumentTextParams>,
     ) -> Result<CallToolResult, McpError> {
-        if let (Some(start), Some(end)) = (params.page_start, params.page_end) {
-            if start > end {
-                return Err(FoiaSearchError::InvalidRequest(
-                    "page_start must be less than or equal to page_end".to_string(),
-                )
-                .into_mcp_error());
-            }
-        }
-
-        let response = PlaceholderResponse {
-            status: "not_implemented",
-            tool: "get_document_text",
-            message: format!(
-                "Text lookup is not implemented for document '{}'.",
-                params.document_id
-            ),
-            next_actions: vec![
-                "Implement page_text and chunk retrieval in the store layer.".to_string(),
-            ],
-        };
+        let (page_start, page_end) = validate_text_page_range(params.page_start, params.page_end)?;
+        let store = self.open_store()?;
+        let document = store
+            .get_document_metadata(&params.document_id)
+            .map_err(document_lookup_error_to_mcp)?;
+        let pages = store
+            .get_page_text(&params.document_id, page_start, page_end)
+            .map_err(document_lookup_error_to_mcp)?;
+        let response = local_document_text_from_stored(document, page_start, page_end, pages);
         json_result(&response)
     }
 
@@ -298,17 +287,19 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<RefreshDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
-        json_result(&IngestionJob {
-            id: format!("refresh-placeholder:{}", params.document_id),
-            status: "not_started".to_string(),
-            document_id: Some(params.document_id),
-            progress: 0.0,
-            next_actions: vec!["Implement source refresh and changed-asset detection.".to_string()],
-            errors: vec![format!(
-                "Refresh pipeline is not implemented; force={}.",
-                params.force.unwrap_or(false)
-            )],
-        })
+        let locator = parse_document_locator(&params.document_id)?;
+        let mut store = self.open_store()?;
+        let job = store
+            .create_ingestion_job(&NewIngestionJob {
+                job_key: format!("refresh:{}", params.document_id),
+                operation: "refresh".to_owned(),
+                source: locator.source,
+                source_id: Some(locator.source_id),
+                target_url: None,
+                next_action: queued_next_action("refresh", params.force.unwrap_or(false)),
+            })
+            .map_err(store_error_to_mcp)?;
+        json_result(&ingestion_job_from_stored(job))
     }
 }
 
@@ -367,10 +358,75 @@ fn validate_source(source: &str) -> Result<(), McpError> {
     }
 }
 
+struct DocumentLocator {
+    source: String,
+    source_id: String,
+}
+
+fn parse_document_locator(document_id: &str) -> Result<DocumentLocator, McpError> {
+    let Some((source, source_id)) = document_id.split_once(':') else {
+        return Err(FoiaSearchError::InvalidRequest(
+            "document_id must use '<source>:<source_id>' format".to_owned(),
+        )
+        .into_mcp_error());
+    };
+    if source_id.trim().is_empty() {
+        return Err(FoiaSearchError::InvalidRequest(
+            "document_id source_id must not be empty".to_owned(),
+        )
+        .into_mcp_error());
+    }
+    validate_source(source)?;
+    Ok(DocumentLocator {
+        source: source.to_owned(),
+        source_id: source_id.to_owned(),
+    })
+}
+
+fn queued_next_action(operation: &str, force: bool) -> String {
+    format!(
+        "Queued for {operation} pipeline; asset download, text extraction, OCR fallback, and indexing are pending; force={force}."
+    )
+}
+
+fn ingestion_job_from_stored(job: StoredIngestionJob) -> IngestionJob {
+    let document_id = job
+        .source_id
+        .as_ref()
+        .map(|source_id| format!("{}:{source_id}", job.source))
+        .or(job.target_url.clone());
+    let mut next_actions = Vec::new();
+    if let Some(next_action) = job.next_action {
+        next_actions.push(next_action);
+    }
+    if job.status == "queued" {
+        next_actions.push("Pipeline worker is not wired yet; queued job is durable and resumable once ingestion execution is implemented.".to_owned());
+    }
+    if next_actions.is_empty() {
+        next_actions.push(format!("Current stage is '{}'.", job.stage));
+    }
+
+    let mut errors = Vec::new();
+    if let Some(error) = job.error {
+        errors.push(error);
+    }
+    errors.extend(job.warnings);
+
+    IngestionJob {
+        id: job.job_key,
+        status: job.status,
+        document_id,
+        progress: job.progress as f32,
+        next_actions,
+        errors,
+    }
+}
+
 fn source_error_to_mcp(error: SourceError) -> McpError {
+    let message = error.to_string();
     match error {
-        SourceError::InvalidInput { message, .. } => McpError::invalid_params(message, None),
-        SourceError::SourceChanged { message, .. } | SourceError::Fetch { message, .. } => {
+        SourceError::InvalidInput { .. } => McpError::invalid_params(message, None),
+        SourceError::SourceChanged { .. } | SourceError::Fetch { .. } => {
             McpError::internal_error(message, None)
         }
     }
@@ -378,4 +434,143 @@ fn source_error_to_mcp(error: SourceError) -> McpError {
 
 fn store_error_to_mcp(error: StoreError) -> McpError {
     McpError::internal_error(error.to_string(), None)
+}
+
+fn ingestion_job_error_to_mcp(error: StoreError) -> McpError {
+    match error {
+        StoreError::MissingIngestionJob(_) => McpError::invalid_params(error.to_string(), None),
+        other => McpError::internal_error(other.to_string(), None),
+    }
+}
+
+fn document_lookup_error_to_mcp(error: StoreError) -> McpError {
+    match error {
+        StoreError::MissingDocument(_)
+        | StoreError::MissingPages { .. }
+        | StoreError::InvalidPageRange(_) => McpError::invalid_params(error.to_string(), None),
+        other => McpError::internal_error(other.to_string(), None),
+    }
+}
+
+fn validate_text_page_range(
+    page_start: Option<u32>,
+    page_end: Option<u32>,
+) -> Result<(u32, u32), McpError> {
+    let (Some(page_start), Some(page_end)) = (page_start, page_end) else {
+        return Err(FoiaSearchError::InvalidRequest(
+            "page_start and page_end are required to avoid unbounded full-text retrieval"
+                .to_string(),
+        )
+        .into_mcp_error());
+    };
+    if page_start == 0 || page_end == 0 {
+        return Err(FoiaSearchError::InvalidRequest(
+            "page_start and page_end must be one-based".to_string(),
+        )
+        .into_mcp_error());
+    }
+    if page_start > page_end {
+        return Err(FoiaSearchError::InvalidRequest(
+            "page_start must be less than or equal to page_end".to_string(),
+        )
+        .into_mcp_error());
+    }
+    if page_end - page_start + 1 > MAX_TEXT_PAGE_RANGE {
+        return Err(FoiaSearchError::InvalidRequest(format!(
+            "page range is too large; request at most {MAX_TEXT_PAGE_RANGE} pages"
+        ))
+        .into_mcp_error());
+    }
+    Ok((page_start, page_end))
+}
+
+fn local_document_from_stored(document: StoredDocumentMetadata) -> Result<LocalDocument, McpError> {
+    let metadata_json = serde_json::from_str(&document.metadata_json)
+        .map_err(FoiaSearchError::from)
+        .map_err(FoiaSearchError::into_mcp_error)?;
+    Ok(LocalDocument {
+        id: document.public_id.clone(),
+        document_key: document.document_key.to_string(),
+        public_id: document.public_id,
+        title: document.title,
+        source: document.source,
+        source_id: document.source_id,
+        date: document.date,
+        collection: document.collection,
+        record_group: document.record_group,
+        description: document.description,
+        origin_url: document.origin_url,
+        document_url: document.document_url,
+        pdf_url: document.pdf_url,
+        metadata_json,
+        citation_note: document.citation_note,
+        terms_note: document.terms_note,
+        page_count: document.page_count,
+        warnings: Vec::new(),
+    })
+}
+
+fn local_document_text_from_stored(
+    document: StoredDocumentMetadata,
+    page_start: u32,
+    page_end: u32,
+    pages: Vec<StoredPageText>,
+) -> LocalDocumentText {
+    let document_key = document.document_key.to_string();
+    let text = pages
+        .iter()
+        .map(|page| format!("[page {}]\n{}", page.page_number, page.text))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let pages = pages
+        .into_iter()
+        .map(|page| LocalPageText {
+            page_number: page.page_number,
+            citation: format!("{document_key}#page={}", page.page_number),
+            text_source: page.text_source,
+            text: page.text,
+        })
+        .collect();
+
+    LocalDocumentText {
+        document_key,
+        public_id: document.public_id,
+        title: document.title,
+        page_start,
+        page_end,
+        pages,
+        text,
+        warnings: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_page_range_requires_explicit_bounds() {
+        assert!(validate_text_page_range(None, None).is_err());
+        assert!(validate_text_page_range(Some(1), None).is_err());
+        assert!(validate_text_page_range(None, Some(1)).is_err());
+    }
+
+    #[test]
+    fn text_page_range_rejects_zero_inverted_and_oversized_ranges() {
+        assert!(validate_text_page_range(Some(0), Some(1)).is_err());
+        assert!(validate_text_page_range(Some(2), Some(1)).is_err());
+        assert!(validate_text_page_range(Some(1), Some(MAX_TEXT_PAGE_RANGE + 1)).is_err());
+    }
+
+    #[test]
+    fn text_page_range_accepts_inclusive_bounded_ranges() {
+        assert_eq!(
+            validate_text_page_range(Some(3), Some(5)).expect("valid range"),
+            (3, 5)
+        );
+        assert_eq!(
+            validate_text_page_range(Some(1), Some(MAX_TEXT_PAGE_RANGE)).expect("max valid range"),
+            (1, MAX_TEXT_PAGE_RANGE)
+        );
+    }
 }

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod errors;
+pub mod http;
 pub mod index;
 pub mod mcp;
 pub mod model;

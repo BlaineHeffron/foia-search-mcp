@@ -50,11 +50,43 @@ pub struct IngestionJob {
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalDocument {
     pub id: String,
+    pub document_key: String,
+    pub public_id: String,
     pub title: String,
     pub source: String,
     pub source_id: String,
-    pub page_count: Option<u32>,
+    pub date: Option<String>,
+    pub collection: Option<String>,
+    pub record_group: Option<String>,
+    pub description: Option<String>,
+    pub origin_url: Option<String>,
+    pub document_url: Option<String>,
+    pub pdf_url: Option<String>,
+    pub metadata_json: Value,
+    pub citation_note: Option<String>,
+    pub terms_note: Option<String>,
+    pub page_count: u32,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalDocumentText {
+    pub document_key: String,
+    pub public_id: String,
+    pub title: String,
+    pub page_start: u32,
+    pub page_end: u32,
+    pub pages: Vec<LocalPageText>,
+    pub text: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalPageText {
+    pub page_number: u32,
+    pub citation: String,
+    pub text_source: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

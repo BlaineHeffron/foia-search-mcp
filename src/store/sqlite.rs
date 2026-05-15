@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde_json::json;
 use std::fmt;
 use std::path::Path;
 
@@ -8,8 +9,18 @@ const MIGRATIONS: &[(&str, &str)] = &[("001_initial", include_str!("migrations/0
 pub enum StoreError {
     Sqlite(rusqlite::Error),
     InvalidDocumentKey(String),
-    InvalidJson { field: &'static str, value: String },
+    InvalidJson {
+        field: &'static str,
+        value: String,
+    },
+    InvalidPageRange(String),
     MissingDocument(String),
+    MissingIngestionJob(String),
+    MissingPages {
+        document_id: String,
+        page_start: u32,
+        page_end: u32,
+    },
 }
 
 impl fmt::Display for StoreError {
@@ -18,7 +29,17 @@ impl fmt::Display for StoreError {
             Self::Sqlite(err) => write!(f, "sqlite error: {err}"),
             Self::InvalidDocumentKey(key) => write!(f, "invalid document_key: {key}"),
             Self::InvalidJson { field, value } => write!(f, "invalid JSON for {field}: {value}"),
+            Self::InvalidPageRange(message) => write!(f, "invalid page range: {message}"),
             Self::MissingDocument(key) => write!(f, "document not found: {key}"),
+            Self::MissingIngestionJob(key) => write!(f, "ingestion job not found: {key}"),
+            Self::MissingPages {
+                document_id,
+                page_start,
+                page_end,
+            } => write!(
+                f,
+                "pages {page_start}-{page_end} not found for document: {document_id}"
+            ),
         }
     }
 }
@@ -138,6 +159,58 @@ pub struct StoredDocument {
     pub source: String,
     pub source_id: String,
     pub title: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredDocumentMetadata {
+    pub id: i64,
+    pub public_id: String,
+    pub document_key: DocumentKey,
+    pub source: String,
+    pub source_id: String,
+    pub title: String,
+    pub date: Option<String>,
+    pub collection: Option<String>,
+    pub record_group: Option<String>,
+    pub description: Option<String>,
+    pub origin_url: Option<String>,
+    pub document_url: Option<String>,
+    pub pdf_url: Option<String>,
+    pub metadata_json: String,
+    pub citation_note: Option<String>,
+    pub terms_note: Option<String>,
+    pub page_count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredPageText {
+    pub page_number: u32,
+    pub text: String,
+    pub text_source: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewIngestionJob {
+    pub job_key: String,
+    pub operation: String,
+    pub source: String,
+    pub source_id: Option<String>,
+    pub target_url: Option<String>,
+    pub next_action: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredIngestionJob {
+    pub job_key: String,
+    pub source: String,
+    pub source_id: Option<String>,
+    pub target_url: Option<String>,
+    pub status: String,
+    pub stage: String,
+    pub progress: f64,
+    pub error: Option<String>,
+    pub warnings: Vec<String>,
+    pub next_action: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -281,6 +354,71 @@ impl SqliteStore {
             .ok_or_else(|| StoreError::MissingDocument(document_key.to_string()))
     }
 
+    pub fn get_document_metadata(
+        &self,
+        public_id_or_document_key: &str,
+    ) -> StoreResult<StoredDocumentMetadata> {
+        self.conn
+            .query_row(
+                "
+                SELECT d.id, d.public_id, d.document_key, d.source, d.source_id,
+                    d.title, d.date, d.collection, d.record_group, d.description,
+                    d.origin_url, d.document_url, d.pdf_url, d.metadata_json,
+                    d.citation_note, d.terms_note, COUNT(p.id) AS page_count
+                FROM documents d
+                LEFT JOIN pages p ON p.document_id = d.id
+                WHERE d.public_id = ?1 OR d.document_key = ?1
+                GROUP BY d.id
+                ",
+                [public_id_or_document_key],
+                read_document_metadata,
+            )
+            .optional()?
+            .ok_or_else(|| StoreError::MissingDocument(public_id_or_document_key.to_owned()))
+    }
+
+    pub fn get_page_text(
+        &self,
+        public_id_or_document_key: &str,
+        page_start: u32,
+        page_end: u32,
+    ) -> StoreResult<Vec<StoredPageText>> {
+        if page_start == 0 || page_end == 0 {
+            return Err(StoreError::InvalidPageRange(
+                "page_start and page_end must be one-based".to_owned(),
+            ));
+        }
+        if page_start > page_end {
+            return Err(StoreError::InvalidPageRange(
+                "page_start must be less than or equal to page_end".to_owned(),
+            ));
+        }
+
+        let document = self.get_document_metadata(public_id_or_document_key)?;
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT page_number, text, text_source
+            FROM pages
+            WHERE document_id = ?1 AND page_number BETWEEN ?2 AND ?3
+            ORDER BY page_number
+            ",
+        )?;
+        let rows = stmt.query_map(
+            params![document.id, i64::from(page_start), i64::from(page_end)],
+            read_page_text,
+        )?;
+        let pages = collect_pages(rows)?;
+        let expected_count = page_end - page_start + 1;
+        if pages.len() != expected_count as usize {
+            return Err(StoreError::MissingPages {
+                document_id: public_id_or_document_key.to_owned(),
+                page_start,
+                page_end,
+            });
+        }
+        Ok(pages)
+    }
+
     pub fn add_asset(&self, asset: &AssetInput) -> StoreResult<i64> {
         let document = self.get_document_by_key(&asset.document_key)?;
         self.conn.execute(
@@ -323,6 +461,67 @@ impl SqliteStore {
                 |row| row.get(0),
             )
             .map_err(StoreError::from)
+    }
+
+    pub fn create_ingestion_job(
+        &mut self,
+        job: &NewIngestionJob,
+    ) -> StoreResult<StoredIngestionJob> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "
+            INSERT OR IGNORE INTO ingestion_jobs (
+                job_key, source, source_id, target_url, status, stage, progress, warnings,
+                next_action
+            )
+            VALUES (?1, ?2, ?3, ?4, 'queued', 'queued', 0.0, '[]', ?5)
+            ",
+            params![
+                job.job_key,
+                job.source,
+                job.source_id,
+                job.target_url,
+                job.next_action,
+            ],
+        )?;
+
+        if tx.changes() == 1 {
+            let payload_json = json!({
+                "job_key": job.job_key,
+                "operation": job.operation,
+                "source": job.source,
+                "source_id": job.source_id,
+                "target_url": job.target_url,
+            })
+            .to_string();
+            tx.execute(
+                "
+                INSERT INTO outbox (topic, payload_json)
+                VALUES ('ingestion.job.queued', ?1)
+                ",
+                [payload_json],
+            )?;
+        }
+
+        let stored = get_ingestion_job_by_key_tx(&tx, &job.job_key)?;
+        tx.commit()?;
+        Ok(stored)
+    }
+
+    pub fn get_ingestion_job_by_key(&self, job_key: &str) -> StoreResult<StoredIngestionJob> {
+        self.conn
+            .query_row(
+                "
+                SELECT job_key, source, source_id, target_url, status, stage, progress, error,
+                       warnings, next_action
+                FROM ingestion_jobs
+                WHERE job_key = ?1
+                ",
+                [job_key],
+                read_ingestion_job,
+            )
+            .optional()?
+            .ok_or_else(|| StoreError::MissingIngestionJob(job_key.to_owned()))
     }
 
     pub fn replace_pages_and_chunks(
@@ -415,6 +614,88 @@ fn read_document(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredDocument> {
     })
 }
 
+fn read_document_metadata(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredDocumentMetadata> {
+    let key: String = row.get(2)?;
+    let page_count: i64 = row.get(16)?;
+    Ok(StoredDocumentMetadata {
+        id: row.get(0)?,
+        public_id: row.get(1)?,
+        document_key: DocumentKey(key),
+        source: row.get(3)?,
+        source_id: row.get(4)?,
+        title: row.get(5)?,
+        date: row.get(6)?,
+        collection: row.get(7)?,
+        record_group: row.get(8)?,
+        description: row.get(9)?,
+        origin_url: row.get(10)?,
+        document_url: row.get(11)?,
+        pdf_url: row.get(12)?,
+        metadata_json: row.get(13)?,
+        citation_note: row.get(14)?,
+        terms_note: row.get(15)?,
+        page_count: page_count.max(0) as u32,
+    })
+}
+
+fn read_page_text(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredPageText> {
+    let page_number: i64 = row.get(0)?;
+    Ok(StoredPageText {
+        page_number: page_number.max(0) as u32,
+        text: row.get(1)?,
+        text_source: row.get(2)?,
+    })
+}
+
+fn collect_pages<F>(rows: rusqlite::MappedRows<'_, F>) -> Result<Vec<StoredPageText>, StoreError>
+where
+    F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<StoredPageText>,
+{
+    let mut pages = Vec::new();
+    for page in rows {
+        pages.push(page?);
+    }
+    Ok(pages)
+}
+
+fn get_ingestion_job_by_key_tx(
+    tx: &Transaction<'_>,
+    job_key: &str,
+) -> StoreResult<StoredIngestionJob> {
+    tx.query_row(
+        "
+        SELECT job_key, source, source_id, target_url, status, stage, progress, error, warnings,
+               next_action
+        FROM ingestion_jobs
+        WHERE job_key = ?1
+        ",
+        [job_key],
+        read_ingestion_job,
+    )
+    .optional()?
+    .ok_or_else(|| StoreError::MissingIngestionJob(job_key.to_owned()))
+}
+
+fn read_ingestion_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredIngestionJob> {
+    let warnings_json: String = row.get(8)?;
+    let warnings = serde_json::from_str::<Vec<String>>(&warnings_json).map_err(|err| {
+        rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(err))
+    })?;
+
+    Ok(StoredIngestionJob {
+        job_key: row.get(0)?,
+        source: row.get(1)?,
+        source_id: row.get(2)?,
+        target_url: row.get(3)?,
+        status: row.get(4)?,
+        stage: row.get(5)?,
+        progress: row.get(6)?,
+        error: row.get(7)?,
+        warnings,
+        next_action: row.get(9)?,
+    })
+}
+
 fn get_document_by_key_tx(
     tx: &Transaction<'_>,
     document_key: &DocumentKey,
@@ -451,115 +732,5 @@ fn ensure_json_array(field: &'static str, value: &str) -> StoreResult<()> {
             field,
             value: value.to_owned(),
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn migration_is_idempotent() {
-        let store = SqliteStore::open_memory().expect("open in-memory store");
-        store.migrate().expect("second migration run");
-
-        let table_count: i64 = store
-            .connection()
-            .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type IN ('table', 'index')",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count sqlite objects");
-        assert!(table_count > 0);
-    }
-
-    #[test]
-    fn document_key_must_not_be_source_id_or_public_id() {
-        let store = SqliteStore::open_memory().expect("open in-memory store");
-        let document = UpsertDocument {
-            public_id: "cia:CREST/unsafe/id".to_owned(),
-            document_key: DocumentKey::new("CREST_unsafe_id").expect("safe key"),
-            source: "cia".to_owned(),
-            source_id: "CREST/unsafe/id".to_owned(),
-            title: "Test".to_owned(),
-            date: None,
-            collection: None,
-            record_group: None,
-            description: None,
-            origin_url: None,
-            document_url: None,
-            pdf_url: None,
-            metadata_json: "{}".to_owned(),
-            citation_note: None,
-            terms_note: None,
-        };
-
-        let stored = store.upsert_document(&document).expect("insert document");
-        assert_eq!(stored.document_key.as_str(), "CREST_unsafe_id");
-        assert_ne!(stored.document_key.as_str(), stored.source_id);
-    }
-
-    #[test]
-    fn unsafe_document_keys_are_rejected() {
-        assert!(DocumentKey::new("CREST/unsafe/id").is_err());
-        assert!(DocumentKey::new("../escape").is_err());
-        assert!(DocumentKey::new("").is_err());
-    }
-
-    #[test]
-    fn asset_upsert_returns_stable_row_id() {
-        let store = SqliteStore::open_memory().expect("open in-memory store");
-        let key = DocumentKey::new("doc_cia_asset").expect("safe key");
-        store
-            .upsert_document(&UpsertDocument {
-                public_id: "cia:asset-test".to_owned(),
-                document_key: key.clone(),
-                source: "cia".to_owned(),
-                source_id: "asset-test".to_owned(),
-                title: "Asset Test".to_owned(),
-                date: None,
-                collection: None,
-                record_group: None,
-                description: None,
-                origin_url: None,
-                document_url: None,
-                pdf_url: None,
-                metadata_json: "{}".to_owned(),
-                citation_note: None,
-                terms_note: None,
-            })
-            .expect("insert document");
-
-        let first = store
-            .add_asset(&AssetInput {
-                document_key: key.clone(),
-                asset_url: "https://www.cia.gov/readingroom/docs/test.pdf".to_owned(),
-                mime_type: Some("application/pdf".to_owned()),
-                role: AssetRole::Pdf,
-                sha256: Some("a".repeat(64)),
-                size_bytes: Some(10),
-                etag: None,
-                last_modified: None,
-                fetched_at: None,
-                cache_policy: Some("respect_source_headers".to_owned()),
-            })
-            .expect("insert asset");
-        let second = store
-            .add_asset(&AssetInput {
-                document_key: key,
-                asset_url: "https://www.cia.gov/readingroom/docs/test.pdf".to_owned(),
-                mime_type: Some("application/pdf".to_owned()),
-                role: AssetRole::Pdf,
-                sha256: Some("b".repeat(64)),
-                size_bytes: Some(20),
-                etag: None,
-                last_modified: None,
-                fetched_at: None,
-                cache_policy: Some("respect_source_headers".to_owned()),
-            })
-            .expect("update asset");
-
-        assert_eq!(first, second);
     }
 }

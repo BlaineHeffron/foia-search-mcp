@@ -4,6 +4,7 @@ use super::{
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceAssetRole,
     SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
+use crate::http::fetch_text;
 
 pub const CIA_SOURCE: &str = "cia";
 pub const CIA_SEARCH_SOURCE: &str = "cia_reading_room";
@@ -28,6 +29,14 @@ impl CiaAdapter {
         &self.base_url
     }
 
+    pub fn from_env() -> Self {
+        std::env::var("FOIA_SEARCH_CIA_BASE_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(Self::new)
+            .unwrap_or_default()
+    }
+
     pub fn search_url(&self, query: &str, cursor: Option<&str>) -> String {
         let page = parse_cursor(cursor);
         let mut url = format!(
@@ -44,12 +53,12 @@ impl CiaAdapter {
 
     pub fn document_url(&self, id_or_url: &str) -> Result<String, SourceError> {
         if id_or_url.starts_with("http://") || id_or_url.starts_with("https://") {
-            if id_or_url.contains("/readingroom/document/") {
+            if self.is_allowed_document_url(id_or_url) {
                 return Ok(id_or_url.to_owned());
             }
             return Err(SourceError::invalid_input(
                 CIA_SOURCE,
-                "CIA document lookup expects a Reading Room document id or /readingroom/document/ URL.",
+                "CIA document lookup expects a Reading Room document id or same-origin /readingroom/document/ URL.",
                 Some("Pass ids like cia-rdp68r00530a000200110020-2.".to_owned()),
             ));
         }
@@ -59,6 +68,15 @@ impl CiaAdapter {
             self.base_url.trim_end_matches('/'),
             percent_encode_path_segment(id_or_url)
         ))
+    }
+
+    fn is_allowed_document_url(&self, url: &str) -> bool {
+        url_origin(url)
+            .zip(url_origin(&self.base_url))
+            .map(|(url_origin, base_origin)| {
+                url_origin == base_origin && url_path(url).contains("/readingroom/document/")
+            })
+            .unwrap_or(false)
     }
 }
 
@@ -79,29 +97,24 @@ impl SourceAdapter for CiaAdapter {
 
     fn search<'a>(
         &'a self,
-        _query: &'a str,
-        _options: SearchOptions,
+        query: &'a str,
+        options: SearchOptions,
     ) -> SourceFuture<'a, SearchPage> {
         Box::pin(async move {
-            Err(SourceError::Fetch {
-                source: CIA_SOURCE,
-                message:
-                    "CIA network search is not wired until the MCP HTTP client scaffold lands."
-                        .to_owned(),
-                url: None,
-            })
+            let page = parse_cursor(options.cursor.as_deref());
+            let url = self.search_url(query, options.cursor.as_deref());
+            let html = fetch_text(CIA_SOURCE, &url).await?;
+            let mut results = parse_cia_search(&html, &self.base_url, query, page);
+            results.records.truncate(options.max_results);
+            Ok(results)
         })
     }
 
     fn get_record<'a>(&'a self, id_or_url: &'a str) -> SourceFuture<'a, SourceRecord> {
         Box::pin(async move {
             let url = self.document_url(id_or_url)?;
-            Err(SourceError::Fetch {
-                source: CIA_SOURCE,
-                message: "CIA network record fetch is not wired until the MCP HTTP client scaffold lands."
-                    .to_owned(),
-                url: Some(url),
-            })
+            let html = fetch_text(CIA_SOURCE, &url).await?;
+            Ok(parse_cia_document(&html, &self.base_url, &url))
         })
     }
 
@@ -592,6 +605,18 @@ fn absolutize(href: &str, base_url: &str) -> String {
     format!("{base}/{href}")
 }
 
+fn url_origin(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let host = rest.split('/').next()?.to_ascii_lowercase();
+    Some(format!("{}://{host}", scheme.to_ascii_lowercase()))
+}
+
+fn url_path(url: &str) -> &str {
+    url.split_once("://")
+        .and_then(|(_scheme, rest)| rest.find('/').map(|index| &rest[index..]))
+        .unwrap_or("/")
+}
+
 fn percent_encode_path_segment(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
@@ -724,6 +749,14 @@ mod tests {
     fn rejects_non_cia_document_urls() {
         let adapter = CiaAdapter::default();
         let err = adapter.document_url("https://www.cia.gov/readingroom/search/site/test");
+
+        assert!(matches!(err, Err(SourceError::InvalidInput { .. })));
+    }
+
+    #[test]
+    fn rejects_cross_origin_cia_document_urls() {
+        let adapter = CiaAdapter::new("https://www.cia.gov");
+        let err = adapter.document_url("https://example.com/readingroom/document/cia-rdp-test");
 
         assert!(matches!(err, Err(SourceError::InvalidInput { .. })));
     }
