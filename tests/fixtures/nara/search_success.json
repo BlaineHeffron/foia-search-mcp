@@ -1,0 +1,29 @@
+{
+  "body": {
+    "hits": {
+      "total": 20,
+      "records": [
+        {
+          "naId": 595353,
+          "title": "Weather Modification Report",
+          "scopeAndContentNote": "Digitized report about weather modification research.",
+          "inclusiveStartDate": "1967",
+          "recordGroup": "Record Group 59",
+          "collectionIdentifier": "Central Foreign Policy Files",
+          "digitalObjects": [
+            {
+              "objectUrl": "https://catalog.archives.gov/files/595353/report.pdf"
+            },
+            {
+              "objectUrl": "https://catalog.archives.gov/files/595353/page-1.jpg"
+            }
+          ]
+        },
+        {
+          "naId": "123456",
+          "title": "Second Catalog Record"
+        }
+      ]
+    }
+  }
+}

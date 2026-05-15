@@ -3,14 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum FoiaSearchError {
-    #[error("source adapter is not implemented: {adapter}")]
-    SourceNotImplemented { adapter: String },
-
-    #[error("local document store is not implemented")]
-    StoreNotImplemented,
-
-    #[error("ingestion pipeline is not implemented")]
-    IngestNotImplemented,
+    #[error("source adapter is not configured: {adapter}")]
+    SourceUnavailable { adapter: String },
 
     #[error("invalid request: {0}")]
     InvalidRequest(String),

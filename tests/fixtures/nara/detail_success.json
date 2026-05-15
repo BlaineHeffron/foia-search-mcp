@@ -1,0 +1,21 @@
+{
+  "body": {
+    "hits": {
+      "total": 1,
+      "records": [
+        {
+          "naId": 595353,
+          "title": "Weather Modification Report",
+          "scopeAndContentNote": "Detailed scope text for the catalog record.",
+          "inclusiveStartDate": "1967",
+          "recordGroup": "Record Group 59",
+          "digitalObjects": [
+            {
+              "objectUrl": "https://catalog.archives.gov/files/595353/report.pdf"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

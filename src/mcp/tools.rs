@@ -15,7 +15,9 @@ use crate::{
     model::{
         IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit, SearchPage,
     },
-    sources::{cia::CiaAdapter, SearchOptions, SourceAdapter, SourceError, SourceStatus},
+    sources::{
+        cia::CiaAdapter, nara::NaraAdapter, SearchOptions, SourceAdapter, SourceError, SourceStatus,
+    },
     store::{
         NewIngestionJob, SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob,
         StoredPageText,
@@ -106,11 +108,18 @@ impl FoiaSearchServer {
     pub fn create() -> anyhow::Result<Self> {
         let config = Config::from_env();
         tracing::info!(data_dir = %config.data_dir.display(), "initialized foia-search config");
+        let sources: Vec<Arc<dyn SourceAdapter>> = vec![
+            Arc::new(CiaAdapter::from_env()),
+            Arc::new(NaraAdapter::new(
+                config.nara_api_base_url.clone(),
+                config.nara_api_key.clone(),
+            )),
+        ];
 
         Ok(Self {
             tool_router: Self::tool_router(),
             config: Arc::new(config),
-            sources: Arc::new(vec![Arc::new(CiaAdapter::from_env())]),
+            sources: Arc::new(sources),
         })
     }
 
@@ -125,16 +134,29 @@ impl FoiaSearchServer {
                 .find(|status| status.name == adapter.name())
             {
                 status.enabled = adapter.status() == SourceStatus::Enabled;
-                status.status = "enabled".to_owned();
-                status.note = "CIA Reading Room adapter is wired for HTTP search and record fetch."
-                    .to_owned();
+                if status.enabled {
+                    status.status = "enabled".to_owned();
+                }
+                status.note = match adapter.name() {
+                    "cia" => {
+                        "CIA Reading Room adapter is wired for HTTP search and record fetch."
+                            .to_owned()
+                    }
+                    "nara" if status.enabled => {
+                        "NARA Catalog adapter is wired for API-key HTTP search and record fetch; persistent API response caching is disabled by policy.".to_owned()
+                    }
+                    "nara" => {
+                        "Set FOIA_SEARCH_NARA_API_KEY before calling the NARA adapter.".to_owned()
+                    }
+                    _ => status.note.clone(),
+                };
             }
         }
         json_result(&statuses)
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. Placeholder scaffold: source adapters are not implemented yet."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA is wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -164,7 +186,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. Placeholder scaffold: returns a structured not-implemented error until adapters exist."
+        description = "Fetch a normalized record from one source by source ID or URL. CIA is wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,
@@ -200,7 +222,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Get durable ingestion job status, progress, errors, and next actions by job ID. Placeholder scaffold: job store is not implemented yet."
+        description = "Get durable ingestion job status, progress, errors, and next actions by job ID."
     )]
     async fn get_ingestion_job(
         &self,
@@ -214,7 +236,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search locally ingested document metadata, page text, and chunks with traceable document/page results. Placeholder scaffold: local index is empty until store/index modules are implemented."
+        description = "Search locally ingested document metadata, page text, and chunks with traceable document/page results."
     )]
     async fn search_local_documents(
         &self,
@@ -281,7 +303,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Refresh a locally ingested document from its source, preserving provenance and creating a new ingestion job when assets changed. Placeholder scaffold only."
+        description = "Refresh a locally ingested document from its source by creating a durable queued ingestion job."
     )]
     async fn refresh_document(
         &self,
@@ -311,7 +333,7 @@ impl FoiaSearchServer {
             .find(|adapter| adapter.name() == source)
             .cloned()
             .ok_or_else(|| {
-                FoiaSearchError::SourceNotImplemented {
+                FoiaSearchError::SourceUnavailable {
                     adapter: source.to_owned(),
                 }
                 .into_mcp_error()
@@ -358,6 +380,7 @@ fn validate_source(source: &str) -> Result<(), McpError> {
     }
 }
 
+#[derive(Debug)]
 struct DocumentLocator {
     source: String,
     source_id: String,
@@ -572,5 +595,185 @@ mod tests {
             validate_text_page_range(Some(1), Some(MAX_TEXT_PAGE_RANGE)).expect("max valid range"),
             (1, MAX_TEXT_PAGE_RANGE)
         );
+    }
+
+    #[test]
+    fn source_validation_accepts_known_sources_and_rejects_unknown_sources() {
+        for source in ["cia", "nara", "govinfo", "frus", "dtic", "noaa"] {
+            assert!(validate_source(source).is_ok(), "{source} should be valid");
+        }
+
+        let error = validate_source("state-dept").expect_err("unknown source should fail");
+        assert!(error.message.contains("invalid source"));
+        assert!(error
+            .message
+            .contains("cia, nara, govinfo, frus, dtic, noaa"));
+    }
+
+    #[test]
+    fn document_locator_requires_source_prefix_and_source_id() {
+        let missing_prefix = locator_error("CREST-123");
+        assert!(missing_prefix
+            .message
+            .contains("document_id must use '<source>:<source_id>' format"));
+
+        let missing_source_id = locator_error("cia:   ");
+        assert!(missing_source_id
+            .message
+            .contains("document_id source_id must not be empty"));
+
+        let invalid_source = locator_error("state-dept:123");
+        assert!(invalid_source.message.contains("invalid source"));
+    }
+
+    #[test]
+    fn document_locator_preserves_valid_source_and_id() {
+        let locator = parse_document_locator("cia:CREST-123").expect("valid locator");
+
+        assert_eq!(locator.source, "cia");
+        assert_eq!(locator.source_id, "CREST-123");
+    }
+
+    #[test]
+    fn ingestion_job_response_includes_document_id_next_actions_and_errors() {
+        let response = ingestion_job_from_stored(StoredIngestionJob {
+            job_key: "ingest:cia:CREST-123".to_owned(),
+            source: "cia".to_owned(),
+            source_id: Some("CREST-123".to_owned()),
+            target_url: None,
+            status: "queued".to_owned(),
+            stage: "queued".to_owned(),
+            progress: 0.25,
+            error: Some("previous transient failure".to_owned()),
+            warnings: vec!["OCR quality warning".to_owned()],
+            next_action: Some(queued_next_action("ingestion", true)),
+        });
+
+        assert_eq!(response.id, "ingest:cia:CREST-123");
+        assert_eq!(response.document_id.as_deref(), Some("cia:CREST-123"));
+        assert_eq!(response.status, "queued");
+        assert_eq!(response.progress, 0.25);
+        assert!(response
+            .next_actions
+            .iter()
+            .any(|action| action.contains("force=true")));
+        assert!(response
+            .next_actions
+            .iter()
+            .any(|action| action.contains("durable and resumable")));
+        assert_eq!(
+            response.errors,
+            vec![
+                "previous transient failure".to_owned(),
+                "OCR quality warning".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn ingestion_job_response_falls_back_to_target_url_and_stage_action() {
+        let response = ingestion_job_from_stored(StoredIngestionJob {
+            job_key: "ingest:https://example.test/doc".to_owned(),
+            source: "cia".to_owned(),
+            source_id: None,
+            target_url: Some("https://example.test/doc".to_owned()),
+            status: "running".to_owned(),
+            stage: "extracting_text".to_owned(),
+            progress: 0.5,
+            error: None,
+            warnings: Vec::new(),
+            next_action: None,
+        });
+
+        assert_eq!(
+            response.document_id.as_deref(),
+            Some("https://example.test/doc")
+        );
+        assert_eq!(
+            response.next_actions,
+            vec!["Current stage is 'extracting_text'.".to_owned()]
+        );
+        assert!(response.errors.is_empty());
+    }
+
+    #[test]
+    fn local_document_response_parses_metadata_json() {
+        let document = stored_document_metadata(r#"{"classification":"declassified"}"#);
+        let response = local_document_from_stored(document).expect("valid metadata JSON");
+
+        assert_eq!(response.id, "cia:CREST-lookup");
+        assert_eq!(response.document_key, "doc_cia_lookup");
+        assert_eq!(response.source, "cia");
+        assert_eq!(response.page_count, 2);
+        assert_eq!(response.metadata_json["classification"], "declassified");
+    }
+
+    #[test]
+    fn local_document_response_rejects_invalid_metadata_json() {
+        let error = local_document_from_stored(stored_document_metadata("not-json"))
+            .expect_err("invalid metadata JSON should fail");
+
+        assert!(error.message.contains("serialization failed"));
+    }
+
+    #[test]
+    fn local_document_text_response_includes_page_citations_and_combined_text() {
+        let response = local_document_text_from_stored(
+            stored_document_metadata(r#"{"classification":"declassified"}"#),
+            1,
+            2,
+            vec![
+                StoredPageText {
+                    page_number: 1,
+                    text: "Page one text".to_owned(),
+                    text_source: "embedded_pdf_text".to_owned(),
+                },
+                StoredPageText {
+                    page_number: 2,
+                    text: "Page two text".to_owned(),
+                    text_source: "local_ocr".to_owned(),
+                },
+            ],
+        );
+
+        assert_eq!(response.document_key, "doc_cia_lookup");
+        assert_eq!(response.public_id, "cia:CREST-lookup");
+        assert_eq!(response.page_start, 1);
+        assert_eq!(response.page_end, 2);
+        assert_eq!(response.pages.len(), 2);
+        assert_eq!(response.pages[0].citation, "doc_cia_lookup#page=1");
+        assert_eq!(response.pages[1].citation, "doc_cia_lookup#page=2");
+        assert!(response.text.contains("[page 1]\nPage one text"));
+        assert!(response.text.contains("[page 2]\nPage two text"));
+    }
+
+    fn stored_document_metadata(metadata_json: &str) -> StoredDocumentMetadata {
+        StoredDocumentMetadata {
+            id: 1,
+            public_id: "cia:CREST-lookup".to_owned(),
+            document_key: crate::store::DocumentKey::new("doc_cia_lookup")
+                .expect("fixture document key should be valid"),
+            source: "cia".to_owned(),
+            source_id: "CREST-lookup".to_owned(),
+            title: "Lookup Test".to_owned(),
+            date: Some("1961-01-01".to_owned()),
+            collection: Some("CREST".to_owned()),
+            record_group: None,
+            description: Some("A local lookup fixture".to_owned()),
+            origin_url: Some("https://example.test/origin".to_owned()),
+            document_url: Some("https://example.test/document".to_owned()),
+            pdf_url: Some("https://example.test/document.pdf".to_owned()),
+            metadata_json: metadata_json.to_owned(),
+            citation_note: Some("Cite page numbers from local OCR.".to_owned()),
+            terms_note: Some("Public domain source terms.".to_owned()),
+            page_count: 2,
+        }
+    }
+
+    fn locator_error(document_id: &str) -> McpError {
+        match parse_document_locator(document_id) {
+            Ok(_) => panic!("{document_id} should fail validation"),
+            Err(error) => error,
+        }
     }
 }

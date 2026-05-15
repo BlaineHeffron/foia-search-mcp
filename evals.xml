@@ -1,42 +1,66 @@
 <evals>
   <eval id="1">
-    <question>Find CIA Reading Room records about weather modification, then fetch the most relevant document metadata.</question>
-    <expected>Call search_cia_reading_room with query "weather modification", choose a result id, then call get_cia_document.</expected>
+    <question>List the available FOIA/declassified-document sources and choose where to start a search for CIA Reading Room material about weather modification.</question>
+    <expected>Call list_sources first; identify cia as enabled and note that other sources are known but not fully wired before choosing search_source with source "cia".</expected>
   </eval>
   <eval id="2">
-    <question>Find official declassified-source entry points for Operation Popeye and identify where congressional hearings would likely live.</question>
-    <expected>Call search_official_declass_sources; identify GovInfo and FRUS as high-value sources.</expected>
+    <question>Find CIA Reading Room records about weather modification, then fetch the most relevant document metadata.</question>
+    <expected>Call search_source with source "cia" and query "weather modification"; choose a returned record id or document URL; call get_source_record with source "cia"; report title, URL/PDF, citation note, terms note, and warnings if present.</expected>
   </eval>
   <eval id="3">
-    <question>Search NARA for Project Skywater records that are available online and fetch one record.</question>
-    <expected>Call search_nara_catalog with available_online=true; call get_nara_record on a returned NAID.</expected>
+    <question>Continue a CIA Reading Room search after the first page.</question>
+    <expected>Call search_source with source "cia"; if next_cursor is present, pass that cursor to a second search_source call with the same query and source; explain when no cursor is available.</expected>
   </eval>
   <eval id="4">
-    <question>Search for HAARP ionospheric heating documents. If CIA has no result, choose another official source.</question>
-    <expected>Use search_cia_reading_room, then search_official_declass_sources and suggest DTIC/NARA.</expected>
+    <question>Get details for CIA document cia-rdp68r00530a000200110020-2.</question>
+    <expected>Call get_source_record with source "cia" and id_or_url "cia-rdp68r00530a000200110020-2"; report normalized metadata, source URLs, PDF URL when available, and citation/terms notes.</expected>
   </eval>
   <eval id="5">
-    <question>Get details for CIA document cia-rdp68r00530a000200110020-2.</question>
-    <expected>Call get_cia_document with the id and report title/url/pdf/metadata if available.</expected>
+    <question>Search for HAARP ionospheric heating documents. If CIA has no useful result, recover by choosing another official source.</question>
+    <expected>Call list_sources, then search_source with source "cia"; if results are empty or off-topic, explain which adapters are enabled, distinguish configured adapters from future source guidance, and recommend the most relevant official source entry points rather than inventing results.</expected>
   </eval>
   <eval id="6">
-    <question>Continue a CIA search after the first page.</question>
-    <expected>Call search_cia_reading_room, then pass next_cursor to a second call if present.</expected>
+    <question>Start ingesting a CIA document, then check whether the ingestion job was persisted.</question>
+    <expected>Call ingest_document with a source-prefixed document_id such as "cia:CREST-test"; capture the returned job id, status, progress, document_id, and next_actions; call get_ingestion_job with that id and confirm the durable queued status and next action.</expected>
   </eval>
   <eval id="7">
-    <question>Compare best official sources for ENMOD treaty text versus Project Stormfury technical reports.</question>
-    <expected>Call search_official_declass_sources; map ENMOD to GovInfo/UN/legal sources and Stormfury to NOAA.</expected>
+    <question>A user asks to ingest "CREST-test" without a source prefix. Recover from the error and submit the corrected job.</question>
+    <expected>Call ingest_document with the provided id; recognize the invalid_params error requiring "&lt;source&gt;:&lt;source_id&gt;"; retry with a valid source-prefixed id such as "cia:CREST-test"; report the queued job.</expected>
   </eval>
   <eval id="8">
-    <question>NARA search returns no records for a narrow phrase. What next?</question>
-    <expected>Retry with broader query and/or available_online=false; use source caveat from tool output.</expected>
+    <question>Search locally ingested documents for "weather modification" and narrow to CIA records.</question>
+    <expected>Call search_local_documents with query "weather modification", source "cia", and an appropriate limit; return traceable document_key/chunk/page hits when present, or explain that the local index may be empty until ingestion workers populate it.</expected>
   </eval>
   <eval id="9">
-    <question>Find declassified or official sources for "ionosphere modification explosives NASA".</question>
-    <expected>Use source entry points and NARA/CIA searches; recommend NARA/DTIC/NASA NTRS outside current direct adapters.</expected>
+    <question>A local search was requested with source "state-dept". Recover without losing the research task.</question>
+    <expected>Call search_local_documents with the requested source; recognize the invalid source error; list valid sources or call list_sources; retry with a valid source if the user intent maps cleanly, otherwise ask for a valid source.</expected>
   </eval>
   <eval id="10">
+    <question>Retrieve metadata and page text for locally ingested document cia:CREST-weather, pages 2 through 4.</question>
+    <expected>Call get_document with document_id "cia:CREST-weather"; call get_document_text with page_start 2 and page_end 4; report public_id, title, page citations, text_source values, and extracted text snippets.</expected>
+  </eval>
+  <eval id="11">
+    <question>A user asks for all text from a document without page bounds. Recover with a bounded request.</question>
+    <expected>Call get_document_text without page_start/page_end only if necessary to discover the error; recognize that explicit one-based bounds are required and at most 50 pages are allowed; retry or ask for a bounded page range.</expected>
+  </eval>
+  <eval id="12">
+    <question>A user asks for pages 20 through 5 from a local document. Recover from the page-range error.</question>
+    <expected>Call get_document_text with the provided range; recognize the invalid_params error that page_start must be less than or equal to page_end; retry with corrected bounds if the intended range is clear.</expected>
+  </eval>
+  <eval id="13">
+    <question>Refresh a locally ingested CIA document and check the resulting job.</question>
+    <expected>Call refresh_document with document_id "cia:CREST-weather"; capture the returned refresh job id; call get_ingestion_job with that id; report queued/resumable status and pending worker next actions.</expected>
+  </eval>
+  <eval id="14">
     <question>Build a citation trail for weather modification military history using only official repositories.</question>
-    <expected>Use CIA, FRUS, GovInfo, NOAA source entry points; fetch CIA/NARA details where available.</expected>
+    <expected>Call list_sources; use search_source/get_source_record for CIA leads; use search_local_documents/get_document/get_document_text for already ingested material; clearly distinguish implemented CIA/local flows from source suggestions that are not yet directly searchable.</expected>
+  </eval>
+  <eval id="15">
+    <question>A NARA search cannot run because no API key is configured. Explain what happened and keep the user moving.</question>
+    <expected>Call search_source with source "nara"; recognize the structured configuration error; use list_sources to provide current source status and explain that FOIA_SEARCH_NARA_API_KEY is required while still suggesting CIA/local search or official NARA manual search as fallback paths.</expected>
+  </eval>
+  <eval id="16">
+    <question>Compare best official sources for ENMOD treaty text versus Project Stormfury technical reports.</question>
+    <expected>Call list_sources; map ENMOD to legal/government publication sources and Stormfury to NOAA/NARA/DTIC-style repositories while stating which are currently direct MCP adapters and which are source-status guidance.</expected>
   </eval>
 </evals>

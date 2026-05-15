@@ -8,17 +8,63 @@ This repository is moving from the TypeScript draft toward a new Rust MCP server
 
 See [docs/foia-rust-design.md](docs/foia-rust-design.md) for the implementation design.
 
-The sections below document the current TypeScript draft only. The Rust rewrite is expected to be a breaking replacement, with compatibility aliases considered only if they prove useful during migration.
+The Rust MCP server is now the primary implementation target. The TypeScript code remains as a draft/reference implementation during migration and should not be treated as the current tool surface.
 
-## Tools
+## Rust MCP Tools
+
+- `list_sources`: list configured FOIA/declassified-document sources, implementation status, and caveats.
+- `search_source`: search one external source. CIA is wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. CIA and configured NARA are wired.
+- `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
+- `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
+- `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
+- `get_document`: return normalized metadata and provenance for an ingested local document.
+- `get_document_text`: return extracted/OCR text for an explicit one-based page range of at most 50 pages.
+- `refresh_document`: create a queued refresh job for a local/source-prefixed document.
+
+## Rust Run
+
+```bash
+cargo build
+cargo run
+```
+
+Common project gates:
+
+```bash
+just fmt
+just lint
+just test
+just architecture
+```
+
+Rust MCP config example:
+
+```json
+{
+  "mcpServers": {
+    "foia-search": {
+      "command": "cargo",
+      "args": ["run", "--manifest-path", "/path/to/foia-search/Cargo.toml"],
+      "env": {
+        "FOIA_SEARCH_DATA_DIR": "/path/to/foia-search-data"
+      }
+    }
+  }
+}
+```
+
+For a compiled binary, set `command` to the built executable path and omit the Cargo arguments.
+
+## TypeScript Draft Tools
 
 - `search_cia_reading_room`: search CIA FOIA Electronic Reading Room.
 - `get_cia_document`: fetch one CIA document page and exposed scan/PDF links.
-- `search_nara_catalog`: search National Archives Catalog API. The TypeScript draft may require adapter updates as NARA API-key requirements change.
+- `search_nara_catalog`: search National Archives Catalog API. Requires `FOIA_SEARCH_NARA_API_KEY`.
 - `get_nara_record`: fetch one NARA record by NAID.
 - `search_official_declass_sources`: return official source entry points and caveats.
 
-## Run
+## TypeScript Draft Run
 
 ```bash
 npm install
@@ -26,7 +72,7 @@ npm run build
 node dist/index.js
 ```
 
-## MCP Config
+## TypeScript Draft MCP Config
 
 ```json
 {
@@ -42,17 +88,21 @@ node dist/index.js
 
 ## Env
 
+Rust:
+
+- `FOIA_SEARCH_DATA_DIR`: local cache/index directory. Defaults to a platform-specific data directory.
+- `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`.
+- `FOIA_SEARCH_NARA_API_KEY`: required for NARA adapter requests.
+- `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2`.
+
+TypeScript draft:
+
 - `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`
 - `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2/records`
 - `FOIA_SEARCH_MAX_RESULTS`: defaults to `25`
 
-Planned Rust rewrite:
-
-- `FOIA_SEARCH_DATA_DIR`: local cache/index directory
-- `FOIA_SEARCH_NARA_API_KEY`: NARA Catalog API key for NARA adapter requests
-
 ## Notes
 
 CIA OCR and HTML are uneven. Treat tool output as a lead finder, then cite the original scan/PDF.
-NARA API behavior changes over time; if direct API calls fail, use `search_official_declass_sources`
-to generate manual search URLs while adapter behavior is updated.
+NARA API behavior changes over time. Use `list_sources` for source status and manual source
+guidance when the adapter is disabled, unavailable, or not configured.

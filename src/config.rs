@@ -8,6 +8,7 @@ const DEFAULT_DATA_DIR_NAME: &str = ".foia-search";
 pub struct Config {
     pub data_dir: PathBuf,
     pub nara_api_key: Option<String>,
+    pub nara_api_base_url: String,
 }
 
 impl Config {
@@ -18,10 +19,15 @@ impl Config {
         let nara_api_key = std::env::var("FOIA_SEARCH_NARA_API_KEY")
             .ok()
             .filter(|value| !value.trim().is_empty());
+        let nara_api_base_url = std::env::var("FOIA_SEARCH_NARA_API_BASE_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "https://catalog.archives.gov/api/v2".to_owned());
 
         Self {
             data_dir,
             nara_api_key,
+            nara_api_base_url,
         }
     }
 
@@ -31,7 +37,8 @@ impl Config {
                 name: "cia".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
-                note: "CIA Reading Room adapter is not implemented in this scaffold.".to_string(),
+                note: "CIA Reading Room adapter is available for HTTP search and record fetch."
+                    .to_string(),
             },
             SourceStatus {
                 name: "nara".to_string(),
@@ -43,7 +50,7 @@ impl Config {
                 }
                 .to_string(),
                 note: if self.nara_api_key.is_some() {
-                    "FOIA_SEARCH_NARA_API_KEY is set; adapter implementation is pending."
+                    "FOIA_SEARCH_NARA_API_KEY is set; NARA Catalog adapter is available with non-persistent API response handling."
                 } else {
                     "Set FOIA_SEARCH_NARA_API_KEY before enabling the NARA adapter."
                 }
@@ -100,6 +107,7 @@ mod tests {
         let config = Config {
             data_dir: PathBuf::from("/tmp/foia-search-test"),
             nara_api_key: Some("key".to_string()),
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
         };
 
         let nara = config
