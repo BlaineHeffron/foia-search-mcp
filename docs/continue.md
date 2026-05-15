@@ -2,6 +2,9 @@
 
 ## Current State
 
+Committed checkpoint: `e1c61cf` (`feat: add ingestion job and download foundations`).
+`main` was pushed to `origin/main` after validation.
+
 This batch combines the ingestion foundation slices:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -16,7 +19,8 @@ Review fixes in this batch:
 
 ## Validation Commands
 
-Run these before handing off or building the next slice:
+The checkpoint above passed these commands. Run them again before handing off or building the
+next slice:
 
 ```bash
 just fmt
@@ -29,6 +33,20 @@ git diff --check
 ```
 
 Also keep running the final scans used for this batch: Rust LOC, production `unwrap|expect|panic|todo|unimplemented`, and outdated setup wording.
+
+## First Action Next Session
+
+Start with a read-only pass over these modules:
+
+- `src/ingest/jobs.rs`
+- `src/ingest/source_plan.rs`
+- `src/ingest/download.rs`
+- `src/ingest/pdftotext.rs`
+
+Then design the queued ingestion executor that connects them. The first implementation step should
+claim a queued job, resolve its source record, build an ingestion plan, download the selected asset,
+extract text, and persist pages/chunks through the existing pipeline. Keep the first executor slice
+single-worker and deterministic before adding background concurrency.
 
 ## Next Tasks
 
@@ -44,3 +62,5 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 - Keep source IDs out of filesystem paths; use `document_key` and content hashes for local artifacts.
 - Preserve source citation and terms notes with every ingested document.
 - Treat TypeScript as draft/reference until removed; Rust is the primary implementation target.
+- Do not enable redirects by default; add explicit hop validation before allowing source-specific redirects.
+- Do not shell out through a string command for PDF/OCR work; use structured `Command` arguments only.
