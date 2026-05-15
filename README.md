@@ -14,7 +14,7 @@ The sections below document the current TypeScript draft only. The Rust rewrite 
 
 - `search_cia_reading_room`: search CIA FOIA Electronic Reading Room.
 - `get_cia_document`: fetch one CIA document page and exposed scan/PDF links.
-- `search_nara_catalog`: search National Archives Catalog API.
+- `search_nara_catalog`: search National Archives Catalog API. The TypeScript draft may require adapter updates as NARA API-key requirements change.
 - `get_nara_record`: fetch one NARA record by NAID.
 - `search_official_declass_sources`: return official source entry points and caveats.
 
@@ -32,7 +32,8 @@ node dist/index.js
 {
   "mcpServers": {
     "foia-search": {
-      "command": "/home/blaine/projects/ResearchTools/foia-search/dist/index.js",
+      "command": "node",
+      "args": ["/home/blaine/projects/ResearchTools/foia-search/dist/index.js"],
       "env": {}
     }
   }
@@ -44,6 +45,11 @@ node dist/index.js
 - `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`
 - `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2/records`
 - `FOIA_SEARCH_MAX_RESULTS`: defaults to `25`
+
+Planned Rust rewrite:
+
+- `FOIA_SEARCH_DATA_DIR`: local cache/index directory
+- `FOIA_SEARCH_NARA_API_KEY`: NARA Catalog API key for NARA adapter requests
 
 ## Notes
 

@@ -135,6 +135,8 @@ $FOIA_SEARCH_DATA_DIR/
 
 The file store should be content-addressed by SHA-256. Database rows should point to blob paths and preserve original source URLs, content type, ETag, Last-Modified, fetch time, and source policy notes.
 
+SQLite is the canonical store for normalized metadata, page text, chunks, job state, and FTS rows. Files under `text/` and `ocr/` are derived audit/debug artifacts only; they may help inspect extractor output, but resume and search logic must reconcile back to SQLite and may delete or regenerate them. Original PDFs, HTML, and other fetched assets remain canonical content-addressed blobs.
+
 ## Metadata Model
 
 Use one normalized document model across sources.
@@ -218,6 +220,8 @@ pub trait SourceAdapter: Send + Sync {
 
 Search should return normalized records and an opaque cursor. Do not expose source page numbers as MCP pagination unless the source only supports page numbers internally. The adapter should hide that and return a cursor the model can pass back.
 
+For the MVP, `search_sources` should paginate one source at a time. If federated multi-source search is added later, its opaque cursor must encode per-source cursors, exhausted-source flags, query/options hash, and merge/ranking state so subsequent calls cannot mix incompatible searches.
+
 ## Source Plan
 
 CIA Reading Room is the first adapter. Port the TypeScript behavior: search public Reading Room HTML, parse document pages, find PDF attachments, and warn when page structure looks wrong. It is valuable as a real-world scraper test because the HTML is not a clean API.
@@ -256,6 +260,8 @@ Extraction quality should consider empty pages, very low character count, replac
 Page citations are part of the contract. Use `pdfinfo` or equivalent to capture source page count, then preserve page boundaries by extracting one page at a time or by verifying form-feed-delimited `pdftotext` output against that page count. If page boundaries cannot be verified, index the text but mark page citations as uncertain instead of returning confident page numbers.
 
 OCR should be opt-in by configuration and tool parameter. It is expensive and has more local dependency requirements than embedded text extraction.
+
+External process execution is part of the ingestion threat model. PDF/OCR commands must be launched with structured `Command` arguments, never through a shell. Configure or discover fixed binary paths at startup, run commands in confined temp directories, set per-process timeouts, kill process groups on timeout/cancel, cap stdout/stderr/output file sizes, validate expected output paths, and clean temp files on both success and failure.
 
 ## Direct Input Safety
 
@@ -305,6 +311,8 @@ Initial tools:
 - `refresh_document`: revalidate metadata/assets and optionally re-extract.
 
 Tool descriptions must tell the model when to use the tool, when not to use it, and what to do with errors. Outputs should be compact, JSON-shaped, and decision-ready. Full document text should never be returned by default.
+
+`ingest_document` should enqueue durable work and return quickly with a job ID. A bounded background worker pool owns ingestion execution, with per-source concurrency limits and a process-wide cap for OCR/PDF subprocesses. Jobs need leases or locks so only one worker advances a job at a time. On shutdown, workers should stop accepting new work, let short stages finish, mark interrupted jobs resumable, and release leases. On startup, the server should recover queued/interrupted jobs before accepting new ingestion work.
 
 ## Error And Output Rules
 
@@ -413,8 +421,8 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 
 ## Open Questions
 
-- Should OCR be enabled by default when dependencies are installed, or only when a tool call requests it?
-- Should first-version ingestion support local file paths, remote URLs, or both?
+- Which exact OCR modes should be exposed once OCR is explicitly enabled: whole-document OCR, page-level OCR, or only low-quality-page fallback?
+- Which direct-ingestion allowlists should ship as examples for trusted local development without weakening the default source-mediated path?
 - What is the acceptable cache policy for NARA-derived metadata in this project?
 - Should semantic/vector search be deferred until after GovInfo/FRUS/NOAA adapters are implemented?
 
