@@ -148,9 +148,10 @@ async fn expired_running_job_reclaims_and_replaces_partial_state() {
     .expect("executor")
     .with_chunk_options(ChunkOptions { target_tokens: 3 });
 
-    let outcome = executor
-        .run_next(&mut store, &files, &FakePdfExtractor)
-        .await
+    let (returned_store, outcome_result) =
+        executor.run_next(store, &files, &FakePdfExtractor).await;
+    store = returned_store;
+    let outcome = outcome_result
         .expect("executor should resume")
         .expect("expired job should be reclaimed");
 
@@ -231,9 +232,10 @@ async fn interrupted_job_preserves_stage_and_progress_then_resumes() {
     .expect("executor")
     .with_chunk_options(ChunkOptions { target_tokens: 3 });
 
-    let outcome = executor
-        .run_next(&mut store, &files, &FakePdfExtractor)
-        .await
+    let (returned_store, outcome_result) =
+        executor.run_next(store, &files, &FakePdfExtractor).await;
+    store = returned_store;
+    let outcome = outcome_result
         .expect("executor should resume interrupted job")
         .expect("interrupted job should be claimed");
 
@@ -265,9 +267,10 @@ async fn run_next_ingests_document_asset_pages_chunks_and_warnings() {
     .expect("executor")
     .with_chunk_options(ChunkOptions { target_tokens: 3 });
 
-    let outcome = executor
-        .run_next(&mut store, &files, &FakePdfExtractor)
-        .await
+    let (returned_store, outcome_result) =
+        executor.run_next(store, &files, &FakePdfExtractor).await;
+    store = returned_store;
+    let outcome = outcome_result
         .expect("executor should run")
         .expect("job should be claimed");
 
@@ -315,10 +318,9 @@ async fn extraction_failure_after_download_leaves_no_partial_local_rows() {
     )
     .expect("executor");
 
-    let error = executor
-        .run_next(&mut store, &files, &FailingPdfExtractor)
-        .await
-        .expect_err("extractor should fail before persistence");
+    let (returned_store, run_result) = executor.run_next(store, &files, &FailingPdfExtractor).await;
+    store = returned_store;
+    let error = run_result.expect_err("extractor should fail before persistence");
     assert!(error.to_string().contains("produced no pages"));
     let failed = store
         .get_ingestion_job_record("ingest:cia:CREST-executor")
@@ -348,10 +350,9 @@ async fn failed_download_marks_job_failed_and_can_claim_requeued_job() {
     )
     .expect("executor");
 
-    let error = executor
-        .run_next(&mut store, &files, &FakePdfExtractor)
-        .await
-        .expect_err("download should fail");
+    let (returned_store, run_result) = executor.run_next(store, &files, &FakePdfExtractor).await;
+    store = returned_store;
+    let error = run_result.expect_err("download should fail");
     assert!(error.to_string().contains("HTTP 500"));
     let failed = store
         .get_ingestion_job_record("ingest:cia:CREST-executor")

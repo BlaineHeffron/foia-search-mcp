@@ -168,6 +168,23 @@ Additional checkpoint after the executor store-boundary trial slice:
   still take `&mut SqliteStore`, so their futures are still not `Send` yet even
   though the awaited network boundaries are now store-free.
 
+Additional checkpoint after the executor full-send signature slice:
+
+- Refactored async executor method signatures to remove `&mut SqliteStore`
+  parameters. `run_next*` and `execute_claimed_job` now take owned
+  `SqliteStore` values and return the store alongside execution results so
+  caller-visible state/inspection semantics stay intact across both success and
+  failure paths.
+- Kept durable stage/progress/warning/interruption/failure/idempotent behavior
+  intact while preserving store mutation ordering around source resolution,
+  download, extraction, and provenance writes.
+- Tightened executor boundary trait-object requirements to
+  `&(dyn TextExtractor + Sync)` and `&(dyn CancellationSignal + Sync)`,
+  including test fixtures, so executor futures can satisfy compile-time Send
+  checks.
+- Extended `src/ingest/executor_send_tests.rs` with a compile-time assertion for
+  the full `run_next` executor future; this assertion now passes.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -235,11 +252,10 @@ Then pick the next ingestion hardening item from the task list below.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
-- Next `Send` hardening step: remove `&mut SqliteStore` from the async executor
-  method signatures themselves (for example by introducing a claim token/phase
-  object and running awaited work in a store-free future between synchronous
-  store phases), then add a compile-time assertion for the full executor future
-  before considering any runtime threading change.
+- Next `Send` hardening step: evaluate the smallest safe runtime follow-up now
+  that full executor futures assert as `Send` at compile time, while preserving
+  existing cancellation/resume/idempotency semantics and avoiding unnecessary
+  worker threading complexity.
 
 ## Constraints
 

@@ -105,7 +105,7 @@ impl QueuedIngestionWorker {
     #[cfg(test)]
     async fn run_once_with_extractor(
         &self,
-        pdf_extractor: &dyn TextExtractor,
+        pdf_extractor: &(dyn TextExtractor + Sync),
     ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
         self.run_once_with_extractors(pdf_extractor, &crate::ingest::NoopOcrExtractor)
             .await
@@ -113,23 +113,23 @@ impl QueuedIngestionWorker {
 
     async fn run_once_with_extractors(
         &self,
-        pdf_extractor: &dyn TextExtractor,
-        ocr_extractor: &dyn TextExtractor,
+        pdf_extractor: &(dyn TextExtractor + Sync),
+        ocr_extractor: &(dyn TextExtractor + Sync),
     ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
-        let mut store = self.open_store()?;
+        let store = self.open_store()?;
         let files = ContentAddressedStore::new(&self.data_dir);
         let executor = QueuedIngestionExecutor::new("foia-ingest-worker", self.sources.clone())?
             .with_ocr_policy(self.ocr_policy);
-        executor
+        let (_store, outcome) = executor
             .run_next_with_ocr_and_cancel(
-                &mut store,
+                store,
                 &files,
                 pdf_extractor,
                 ocr_extractor,
                 &self.cancellation,
             )
-            .await
-            .map_err(WorkerError::from)
+            .await;
+        outcome.map_err(WorkerError::from)
     }
 
     fn run_until_shutdown(self, control: mpsc::Receiver<WorkerCommand>) {

@@ -90,59 +90,72 @@ impl QueuedIngestionExecutor {
 
     pub async fn run_next(
         &self,
-        store: &mut SqliteStore,
+        store: SqliteStore,
         files: &ContentAddressedStore,
-        pdf_extractor: &dyn TextExtractor,
-    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
+        pdf_extractor: &(dyn TextExtractor + Sync),
+    ) -> (
+        SqliteStore,
+        Result<Option<ExecutorJobOutcome>, ExecutorError>,
+    ) {
         self.run_next_with_ocr(store, files, pdf_extractor, &NoopOcrExtractor)
             .await
     }
 
     pub async fn run_next_with_ocr(
         &self,
-        store: &mut SqliteStore,
+        store: SqliteStore,
         files: &ContentAddressedStore,
-        pdf_extractor: &dyn TextExtractor,
-        ocr_extractor: &dyn TextExtractor,
-    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
+        pdf_extractor: &(dyn TextExtractor + Sync),
+        ocr_extractor: &(dyn TextExtractor + Sync),
+    ) -> (
+        SqliteStore,
+        Result<Option<ExecutorJobOutcome>, ExecutorError>,
+    ) {
         self.run_next_with_ocr_and_cancel(store, files, pdf_extractor, ocr_extractor, &NeverCancel)
             .await
     }
 
     pub async fn run_next_with_ocr_and_cancel(
         &self,
-        store: &mut SqliteStore,
+        store: SqliteStore,
         files: &ContentAddressedStore,
-        pdf_extractor: &dyn TextExtractor,
-        ocr_extractor: &dyn TextExtractor,
-        cancellation: &dyn CancellationSignal,
-    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
-        let lease = self.lease(store)?;
-        let Some(job) = store.claim_next_ingestion_job(&lease)? else {
-            return Ok(None);
+        pdf_extractor: &(dyn TextExtractor + Sync),
+        ocr_extractor: &(dyn TextExtractor + Sync),
+        cancellation: &(dyn CancellationSignal + Sync),
+    ) -> (
+        SqliteStore,
+        Result<Option<ExecutorJobOutcome>, ExecutorError>,
+    ) {
+        let lease = match self.lease(&store) {
+            Ok(lease) => lease,
+            Err(error) => return (store, Err(ExecutorError::Store(error))),
+        };
+        let job = match store.claim_next_ingestion_job(&lease) {
+            Ok(Some(job)) => job,
+            Ok(None) => return (store, Ok(None)),
+            Err(error) => return (store, Err(ExecutorError::Store(error))),
         };
 
-        let result = match self.check_cancellation(cancellation, CancellationCheckpoint::AfterClaim)
-        {
-            Ok(()) => {
-                self.execute_claimed_job(
-                    store,
-                    files,
-                    pdf_extractor,
-                    ocr_extractor,
-                    cancellation,
-                    &job,
-                )
-                .await
-            }
-            Err(error) => Err(error),
-        };
-
-        match result {
-            Ok(outcome) => {
-                store.complete_ingestion_job(&job.job_key, &self.owner)?;
-                Ok(Some(outcome))
-            }
+        let (store, result) =
+            match self.check_cancellation(cancellation, CancellationCheckpoint::AfterClaim) {
+                Ok(()) => {
+                    self.execute_claimed_job(
+                        store,
+                        files,
+                        pdf_extractor,
+                        ocr_extractor,
+                        cancellation,
+                        &job,
+                    )
+                    .await
+                }
+                Err(error) => (store, Err(error)),
+            };
+        let final_result = match result {
+            Ok(outcome) => match store.complete_ingestion_job(&job.job_key, &self.owner) {
+                Ok(_) => Ok(Some(outcome)),
+                Err(error) => Err(ExecutorError::Store(error)),
+            },
             Err(ExecutorError::Cancelled { checkpoint }) => {
                 let _ = store.interrupt_ingestion_job(
                     &job.job_key,
@@ -164,183 +177,194 @@ impl QueuedIngestionExecutor {
                 );
                 Err(error)
             }
-        }
+        };
+        (store, final_result)
     }
 
     async fn execute_claimed_job(
         &self,
-        store: &mut SqliteStore,
+        mut store: SqliteStore,
         files: &ContentAddressedStore,
-        pdf_extractor: &dyn TextExtractor,
-        ocr_extractor: &dyn TextExtractor,
-        cancellation: &dyn CancellationSignal,
+        pdf_extractor: &(dyn TextExtractor + Sync),
+        ocr_extractor: &(dyn TextExtractor + Sync),
+        cancellation: &(dyn CancellationSignal + Sync),
         job: &IngestionJobRecord,
-    ) -> Result<ExecutorJobOutcome, ExecutorError> {
-        let adapter = self.source_adapter(&job.source)?;
-        let id_or_url = job
-            .source_id
-            .as_deref()
-            .or(job.target_url.as_deref())
-            .ok_or_else(|| ExecutorError::MissingJobLocator {
-                job_key: job.job_key.clone(),
-            })?;
+    ) -> (SqliteStore, Result<ExecutorJobOutcome, ExecutorError>) {
+        let result = async {
+            let adapter = self.source_adapter(&job.source)?;
+            let id_or_url = job
+                .source_id
+                .as_deref()
+                .or(job.target_url.as_deref())
+                .ok_or_else(|| ExecutorError::MissingJobLocator {
+                    job_key: job.job_key.clone(),
+                })?;
 
-        store.mark_ingestion_job_stage(
-            &job.job_key,
-            &self.owner,
-            "resolving_source_record",
-            0.10,
-            Some("Resolving source record through configured adapter."),
-        )?;
-        let resolved = resolve_source_record_for_job(SourceResolutionRequest {
-            adapter: adapter.clone(),
-            id_or_url: id_or_url.to_owned(),
-        })
-        .await?;
-        self.check_cancellation(cancellation, CancellationCheckpoint::AfterSourceResolution)?;
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "resolving_source_record",
+                0.10,
+                Some("Resolving source record through configured adapter."),
+            )?;
+            let resolved = resolve_source_record_for_job(SourceResolutionRequest {
+                adapter: adapter.clone(),
+                id_or_url: id_or_url.to_owned(),
+            })
+            .await?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::AfterSourceResolution)?;
 
-        store.mark_ingestion_job_stage(
-            &job.job_key,
-            &self.owner,
-            "planning_ingestion",
-            0.20,
-            Some("Selecting ingestible asset and building normalized document plan."),
-        )?;
-        let plan = plan_resolved_source_ingestion(resolved)?;
-        self.check_cancellation(cancellation, CancellationCheckpoint::AfterPlanning)?;
-        let source_asset = planned_asset_to_source_asset(&plan.asset);
-        let cache_policy = store_cache_policy(plan.cache_policy.clone());
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "planning_ingestion",
+                0.20,
+                Some("Selecting ingestible asset and building normalized document plan."),
+            )?;
+            let plan = plan_resolved_source_ingestion(resolved)?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::AfterPlanning)?;
+            let source_asset = planned_asset_to_source_asset(&plan.asset);
+            let cache_policy = store_cache_policy(plan.cache_policy.clone());
 
-        store.mark_ingestion_job_stage(
-            &job.job_key,
-            &self.owner,
-            "downloading_asset",
-            0.35,
-            Some("Downloading selected asset with bounded size and explicit redirect policy."),
-        )?;
-        self.check_cancellation(cancellation, CancellationCheckpoint::BeforeDownload)?;
-        let download_request = DownloadHttpRequest {
-            source: adapter.name().to_owned(),
-            asset: source_asset,
-            cache_policy,
-            redirect_policy: adapter.redirect_policy(),
-            force_download: self.force_download,
-            cached: None,
-        };
-        let cached = {
-            let cache = CacheStore::new(store);
-            self.downloader
-                .load_cached_entry(&cache, &download_request.download_request())?
-        };
-        let prepared = download_asset_http_for_job(
-            &self.downloader,
-            files,
-            DownloadHttpRequest {
-                cached,
-                ..download_request
-            },
-        )
-        .await?;
-        let downloaded = {
-            let cache = CacheStore::new(store);
-            self.downloader
-                .persist_prepared_download(&cache, prepared)?
-        };
-        self.check_cancellation(cancellation, CancellationCheckpoint::AfterDownload)?;
-
-        store.mark_ingestion_job_stage(
-            &job.job_key,
-            &self.owner,
-            "extracting_text",
-            0.60,
-            Some("Extracting page text and building chunks."),
-        )?;
-        self.check_cancellation(cancellation, CancellationCheckpoint::BeforeExtraction)?;
-        let outcome = if plan.asset.role == SourceAssetRole::Pdf {
-            let selected = select_pdf_text_with_cancel(
-                &downloaded.path,
-                pdf_extractor,
-                ocr_extractor,
-                self.ocr_policy,
-                &|| cancellation.is_cancelled(),
-            )
-            .map_err(|error| match error {
-                TextExtraction::Cancelled { .. } => ExecutorError::Cancelled {
-                    checkpoint: CancellationCheckpoint::DuringExtraction,
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "downloading_asset",
+                0.35,
+                Some("Downloading selected asset with bounded size and explicit redirect policy."),
+            )?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::BeforeDownload)?;
+            let download_request = DownloadHttpRequest {
+                source: adapter.name().to_owned(),
+                asset: source_asset,
+                cache_policy,
+                redirect_policy: adapter.redirect_policy(),
+                force_download: self.force_download,
+                cached: None,
+            };
+            let cached = {
+                let cache = CacheStore::new(&store);
+                self.downloader
+                    .load_cached_entry(&cache, &download_request.download_request())?
+            };
+            let prepared = download_asset_http_for_job(
+                &self.downloader,
+                files,
+                DownloadHttpRequest {
+                    cached,
+                    ..download_request
                 },
-                error => ExecutorError::Ingest(IngestError::from(error)),
+            )
+            .await?;
+            let downloaded = {
+                let cache = CacheStore::new(&store);
+                self.downloader
+                    .persist_prepared_download(&cache, prepared)?
+            };
+            self.check_cancellation(cancellation, CancellationCheckpoint::AfterDownload)?;
+
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "extracting_text",
+                0.60,
+                Some("Extracting page text and building chunks."),
+            )?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::BeforeExtraction)?;
+            let outcome = if plan.asset.role == SourceAssetRole::Pdf {
+                let selected = select_pdf_text_with_cancel(
+                    &downloaded.path,
+                    pdf_extractor,
+                    ocr_extractor,
+                    self.ocr_policy,
+                    &|| cancellation.is_cancelled(),
+                )
+                .map_err(|error| match error {
+                    TextExtraction::Cancelled { .. } => ExecutorError::Cancelled {
+                        checkpoint: CancellationCheckpoint::DuringExtraction,
+                    },
+                    error => ExecutorError::Ingest(IngestError::from(error)),
+                })?;
+                store.mark_ingestion_job_stage(
+                    &job.job_key,
+                    &self.owner,
+                    "persisting_document",
+                    0.80,
+                    Some("Persisting normalized document, pages, chunks, and local index rows."),
+                )?;
+                self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
+                ingest_extracted_text(
+                    &mut store,
+                    plan.document,
+                    &self.chunk_options,
+                    selected.extracted,
+                    Some(selected.text_source),
+                )?
+            } else {
+                let extracted = TextFileExtractor
+                    .extract_pages(&downloaded.path)
+                    .map_err(IngestError::from)?;
+                store.mark_ingestion_job_stage(
+                    &job.job_key,
+                    &self.owner,
+                    "persisting_document",
+                    0.80,
+                    Some("Persisting normalized document, pages, chunks, and local index rows."),
+                )?;
+                self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
+                ingest_extracted_text(
+                    &mut store,
+                    plan.document,
+                    &self.chunk_options,
+                    extracted,
+                    None,
+                )?
+            };
+
+            for warning in &outcome.warnings {
+                store.record_ingestion_job_warning(&job.job_key, &self.owner, warning)?;
+            }
+            store.link_ingestion_job_document(&job.job_key, &self.owner, &outcome.document_key)?;
+
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "persisting_asset",
+                0.90,
+                Some("Persisting asset provenance after successful document/page/chunk upsert."),
+            )?;
+            self.check_cancellation(
+                cancellation,
+                CancellationCheckpoint::BeforeAssetProvenanceWrite,
+            )?;
+            store.add_asset(&AssetInput {
+                document_key: outcome.document_key.clone(),
+                asset_url: downloaded.asset_url,
+                mime_type: downloaded.mime_type,
+                role: asset_role(downloaded.role),
+                sha256: Some(downloaded.sha256),
+                size_bytes: Some(asset_size(downloaded.size_bytes)?),
+                etag: downloaded.etag,
+                last_modified: downloaded.last_modified,
+                fetched_at: Some(sqlite_now(&store)?),
+                cache_policy: Some(cache_policy_name(downloaded.cache_policy).to_owned()),
             })?;
-            store.mark_ingestion_job_stage(
-                &job.job_key,
-                &self.owner,
-                "persisting_document",
-                0.80,
-                Some("Persisting normalized document, pages, chunks, and local index rows."),
-            )?;
-            self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
-            ingest_extracted_text(
-                store,
-                plan.document,
-                &self.chunk_options,
-                selected.extracted,
-                Some(selected.text_source),
-            )?
-        } else {
-            let extracted = TextFileExtractor
-                .extract_pages(&downloaded.path)
-                .map_err(IngestError::from)?;
-            store.mark_ingestion_job_stage(
-                &job.job_key,
-                &self.owner,
-                "persisting_document",
-                0.80,
-                Some("Persisting normalized document, pages, chunks, and local index rows."),
-            )?;
-            self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
-            ingest_extracted_text(store, plan.document, &self.chunk_options, extracted, None)?
-        };
 
-        for warning in &outcome.warnings {
-            store.record_ingestion_job_warning(&job.job_key, &self.owner, warning)?;
+            Ok(ExecutorJobOutcome {
+                job_key: job.job_key.clone(),
+                document_key: outcome.document_key.to_string(),
+                page_count: outcome.page_count,
+                chunk_count: outcome.chunk_count,
+                warnings: outcome.warnings,
+            })
         }
-        store.link_ingestion_job_document(&job.job_key, &self.owner, &outcome.document_key)?;
-
-        store.mark_ingestion_job_stage(
-            &job.job_key,
-            &self.owner,
-            "persisting_asset",
-            0.90,
-            Some("Persisting asset provenance after successful document/page/chunk upsert."),
-        )?;
-        self.check_cancellation(
-            cancellation,
-            CancellationCheckpoint::BeforeAssetProvenanceWrite,
-        )?;
-        store.add_asset(&AssetInput {
-            document_key: outcome.document_key.clone(),
-            asset_url: downloaded.asset_url,
-            mime_type: downloaded.mime_type,
-            role: asset_role(downloaded.role),
-            sha256: Some(downloaded.sha256),
-            size_bytes: Some(asset_size(downloaded.size_bytes)?),
-            etag: downloaded.etag,
-            last_modified: downloaded.last_modified,
-            fetched_at: Some(sqlite_now(store)?),
-            cache_policy: Some(cache_policy_name(downloaded.cache_policy).to_owned()),
-        })?;
-
-        Ok(ExecutorJobOutcome {
-            job_key: job.job_key.clone(),
-            document_key: outcome.document_key.to_string(),
-            page_count: outcome.page_count,
-            chunk_count: outcome.chunk_count,
-            warnings: outcome.warnings,
-        })
+        .await;
+        (store, result)
     }
 
     fn check_cancellation(
         &self,
-        cancellation: &dyn CancellationSignal,
+        cancellation: &(dyn CancellationSignal + Sync),
         checkpoint: CancellationCheckpoint,
     ) -> Result<(), ExecutorError> {
         ensure_not_cancelled(cancellation, checkpoint)

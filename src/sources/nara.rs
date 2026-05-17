@@ -1,19 +1,17 @@
 use std::collections::{BTreeMap, HashSet};
-use std::time::Duration;
 
-use reqwest::header::{ACCEPT, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde_json::Value;
 
 use super::{
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceAssetRole,
     SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
+use crate::http::fetch_text_with_headers;
 
 pub const NARA_SOURCE: &str = "nara";
 pub const NARA_SEARCH_SOURCE: &str = "nara_catalog";
 pub const DEFAULT_BASE_URL: &str = "https://catalog.archives.gov/api/v2";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
-const USER_AGENT_VALUE: &str = "foia-search-mcp/0.1 (+https://github.com/modelcontextprotocol)";
 const CITATION_NOTE: &str =
     "National Archives Catalog metadata. Verify digitized object links, OCR, and transcripts at source.";
 const TERMS_NOTE: &str =
@@ -106,45 +104,45 @@ impl NaraAdapter {
 
     async fn fetch_json(&self, url: &str) -> Result<Value, SourceError> {
         let api_key = self.require_api_key()?;
-        let response = reqwest::Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|err| SourceError::Fetch {
-                source: NARA_SOURCE,
-                message: format!("Failed to initialize HTTP client: {err}"),
-                url: Some(url.to_owned()),
-            })?
-            .get(url)
-            .header(USER_AGENT, USER_AGENT_VALUE)
-            .header(ACCEPT, "application/json")
-            .header("x-api-key", api_key)
-            .send()
-            .await
-            .map_err(|err| SourceError::Fetch {
-                source: NARA_SOURCE,
-                message: format!(
-                    "NARA HTTP request failed. Retry later, narrow the query, or verify the Catalog manually. Details: {err}"
-                ),
-                url: Some(url.to_owned()),
-            })?;
-
-        let status = response.status();
-        if !status.is_success() {
-            return Err(SourceError::Fetch {
-                source: NARA_SOURCE,
-                message: format!(
-                    "NARA returned HTTP {status}. Retry later, narrow the query, or verify API key and source limits."
-                ),
-                url: Some(url.to_owned()),
-            });
-        }
-
-        let text = response.text().await.map_err(|err| SourceError::Fetch {
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let api_key = HeaderValue::from_str(api_key).map_err(|err| SourceError::Fetch {
             source: NARA_SOURCE,
-            message: format!("Failed to read NARA response body: {err}"),
+            message: format!("Invalid FOIA_SEARCH_NARA_API_KEY for HTTP header use: {err}"),
             url: Some(url.to_owned()),
         })?;
-        parse_json_text(&text, url)
+        headers.insert("x-api-key", api_key);
+
+        let text = fetch_text_with_headers(NARA_SOURCE, url, headers)
+            .await
+            .map_err(|err| match err {
+                SourceError::Fetch {
+                    source,
+                    message,
+                    url,
+                } => SourceError::Fetch {
+                    source,
+                    message: format!(
+                        "NARA HTTP request failed. Retry later, narrow the query, or verify the Catalog manually. Details: {message}"
+                    ),
+                    url,
+                },
+                other => other,
+            })?;
+        parse_json_text(&text, url).map_err(|err| match err {
+            SourceError::Fetch {
+                source: NARA_SOURCE,
+                message,
+                url,
+            } => SourceError::Fetch {
+                source: NARA_SOURCE,
+                message: format!(
+                    "NARA returned an invalid API response. Verify API key, endpoint, and source availability. Details: {message}"
+                ),
+                url,
+            },
+            other => other,
+        })
     }
 }
 

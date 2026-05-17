@@ -107,16 +107,17 @@ async fn cancellation_after_claim_marks_job_interrupted() {
     let cancellation = CancellationToken::new();
     cancellation.cancel();
 
-    let error = executor
+    let (returned_store, run_result) = executor
         .run_next_with_ocr_and_cancel(
-            &mut store,
+            store,
             &files,
             &FixturePdfExtractor,
             &FixturePdfExtractor,
             &cancellation,
         )
-        .await
-        .expect_err("cancellation should interrupt claimed job");
+        .await;
+    store = returned_store;
+    let error = run_result.expect_err("cancellation should interrupt claimed job");
     assert!(matches!(
         error,
         ExecutorError::Cancelled {
@@ -143,16 +144,18 @@ async fn cancellation_before_persistence_interrupts_without_partial_rows() {
         fixture_executor(asset_url).with_chunk_options(ChunkOptions { target_tokens: 3 });
     let cancellation = StepCancellation::at(7);
 
-    let error = executor
+    let (returned_store, run_result) = executor
         .run_next_with_ocr_and_cancel(
-            &mut store,
+            store,
             &files,
             &FixturePdfExtractor,
             &FixturePdfExtractor,
             &cancellation,
         )
-        .await
-        .expect_err("checkpoint cancellation should interrupt before persistence");
+        .await;
+    store = returned_store;
+    let error =
+        run_result.expect_err("checkpoint cancellation should interrupt before persistence");
     assert!(matches!(
         error,
         ExecutorError::Cancelled {
@@ -182,16 +185,18 @@ async fn cancellation_after_source_resolution_is_resumable() {
         fixture_executor(asset_url).with_chunk_options(ChunkOptions { target_tokens: 3 });
     let cancellation = StepCancellation::at(2);
 
-    let error = executor
+    let (returned_store, run_result) = executor
         .run_next_with_ocr_and_cancel(
-            &mut store,
+            store,
             &files,
             &FixturePdfExtractor,
             &FixturePdfExtractor,
             &cancellation,
         )
-        .await
-        .expect_err("checkpoint cancellation should interrupt after source resolution");
+        .await;
+    store = returned_store;
+    let error =
+        run_result.expect_err("checkpoint cancellation should interrupt after source resolution");
     assert!(matches!(
         error,
         ExecutorError::Cancelled {
@@ -210,9 +215,10 @@ async fn cancellation_after_source_resolution_is_resumable() {
     assert_eq!(row_count(&store, "pages"), 0);
     assert_eq!(row_count(&store, "chunks"), 0);
 
-    let resumed = executor
-        .run_next(&mut store, &files, &FixturePdfExtractor)
-        .await
+    let (returned_store, resumed_result) =
+        executor.run_next(store, &files, &FixturePdfExtractor).await;
+    store = returned_store;
+    let resumed = resumed_result
         .expect("resume should succeed")
         .expect("interrupted job should be reclaimed");
     assert_eq!(resumed.page_count, 2);
@@ -246,10 +252,9 @@ async fn planning_failure_advances_to_planning_progress() {
         QueuedIngestionExecutor::new("planning-worker", vec![Arc::new(FakeAdapter { record })])
             .expect("executor");
 
-    let error = executor
-        .run_next(&mut store, &files, &FixturePdfExtractor)
-        .await
-        .expect_err("non-ingestible assets should fail planning");
+    let (returned_store, run_result) = executor.run_next(store, &files, &FixturePdfExtractor).await;
+    store = returned_store;
+    let error = run_result.expect_err("non-ingestible assets should fail planning");
 
     assert!(matches!(
         error,
@@ -280,15 +285,11 @@ async fn extraction_cancelled_error_marks_job_interrupted_not_failed() {
     enqueue(&mut store);
     let executor = fixture_executor(asset_url);
 
-    let error = executor
-        .run_next_with_ocr(
-            &mut store,
-            &files,
-            &CancelledPdfExtractor,
-            &FixturePdfExtractor,
-        )
-        .await
-        .expect_err("cancelled extraction should interrupt job");
+    let (returned_store, run_result) = executor
+        .run_next_with_ocr(store, &files, &CancelledPdfExtractor, &FixturePdfExtractor)
+        .await;
+    store = returned_store;
+    let error = run_result.expect_err("cancelled extraction should interrupt job");
 
     assert!(matches!(
         error,
@@ -316,16 +317,18 @@ async fn cancellation_before_asset_provenance_write_keeps_document_rows_resumabl
         fixture_executor(asset_url).with_chunk_options(ChunkOptions { target_tokens: 3 });
     let cancellation = StepCancellation::at(8);
 
-    let error = executor
+    let (returned_store, run_result) = executor
         .run_next_with_ocr_and_cancel(
-            &mut store,
+            store,
             &files,
             &FixturePdfExtractor,
             &FixturePdfExtractor,
             &cancellation,
         )
-        .await
-        .expect_err("checkpoint cancellation should interrupt before asset write");
+        .await;
+    store = returned_store;
+    let error =
+        run_result.expect_err("checkpoint cancellation should interrupt before asset write");
     assert!(matches!(
         error,
         ExecutorError::Cancelled {

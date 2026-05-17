@@ -2,12 +2,12 @@ use crate::ingest::executor_async::{
     download_asset_http_for_job, resolve_source_record_for_job, DownloadHttpRequest,
     SourceResolutionRequest,
 };
-use crate::ingest::AssetDownloader;
+use crate::ingest::{AssetDownloader, QueuedIngestionExecutor, TextFileExtractor};
 use crate::sources::{
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceAssetRole,
     SourceFuture, SourceMetadata, SourceRecord, SourceStatus,
 };
-use crate::store::ContentAddressedStore;
+use crate::store::{ContentAddressedStore, SqliteStore};
 use std::sync::Arc;
 
 fn assert_send<T: Send>(_: T) {}
@@ -87,6 +87,21 @@ fn async_store_free_executor_boundaries_are_send() {
         &files,
         download_request,
     ));
+}
+
+#[test]
+fn full_executor_run_next_future_is_send() {
+    let executor = QueuedIngestionExecutor::new(
+        "send-check-worker",
+        vec![Arc::new(FakeAdapter {
+            record: source_record("https://example.test/fixture.pdf".to_owned()),
+        })],
+    )
+    .expect("executor");
+    let store = SqliteStore::open_memory().expect("store");
+    let files_dir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(files_dir.path());
+    assert_send(executor.run_next(store, &files, &TextFileExtractor));
 }
 
 fn source_record(asset_url: String) -> SourceRecord {

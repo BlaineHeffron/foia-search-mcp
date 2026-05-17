@@ -160,9 +160,51 @@ async fn html_response_returns_source_changed_error() {
         .starts_with("GET /api/v2/records/search?q=weather"));
 }
 
+#[tokio::test]
+async fn redirect_response_is_denied_without_following_target() {
+    let redirect_target = "http://127.0.0.1:1/private";
+    let (base_url, request) = serve_once_with_headers(
+        "HTTP/1.1 302 Found",
+        vec![("Location", redirect_target)],
+        "",
+    );
+    let adapter = NaraAdapter::new(base_url, Some("test-key".to_owned()));
+
+    let err = adapter
+        .search("weather", SearchOptions::default())
+        .await
+        .expect_err("redirect should be denied before following target");
+
+    match err {
+        SourceError::Fetch {
+            message,
+            url: Some(url),
+            ..
+        } => {
+            assert!(message.contains("redirect HTTP 302"));
+            assert!(message.contains("denied by default"));
+            assert!(message.contains(redirect_target));
+            assert!(url.contains("/api/v2/records/search?q=weather"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+    assert!(request
+        .join()
+        .expect("request thread should finish")
+        .starts_with("GET /api/v2/records/search?q=weather"));
+}
+
 fn serve_once(
     status_line: &'static str,
     content_type: &'static str,
+    body: &'static str,
+) -> (String, thread::JoinHandle<String>) {
+    serve_once_with_headers(status_line, vec![("Content-Type", content_type)], body)
+}
+
+fn serve_once_with_headers(
+    status_line: &'static str,
+    headers: Vec<(&'static str, &'static str)>,
     body: &'static str,
 ) -> (String, thread::JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
@@ -172,9 +214,16 @@ fn serve_once(
         let mut buffer = [0; 4096];
         let read = stream.read(&mut buffer).expect("test server should read");
         let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        let mut header_block = String::new();
+        for (name, value) in headers {
+            header_block.push_str(name);
+            header_block.push_str(": ");
+            header_block.push_str(value);
+            header_block.push_str("\r\n");
+        }
         let response = format!(
-            "{status_line}\r\nContent-Length: {}\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
+            "{status_line}\r\nContent-Length: {}\r\n{header_block}Connection: close\r\n\r\n{body}",
+            body.len(),
         );
         stream
             .write_all(response.as_bytes())

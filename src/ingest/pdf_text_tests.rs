@@ -8,57 +8,57 @@ use crate::sources::{
     SourceFuture, SourceMetadata, SourceRecord, SourceStatus,
 };
 use crate::store::{ContentAddressedStore, NewIngestionJob, SqliteStore, TextSource};
-use std::cell::Cell;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
 struct StaticExtractor {
     extracted: ExtractedText,
-    calls: Cell<usize>,
+    calls: AtomicUsize,
 }
 
 impl StaticExtractor {
     fn new(extracted: ExtractedText) -> Self {
         Self {
             extracted,
-            calls: Cell::new(0),
+            calls: AtomicUsize::new(0),
         }
     }
 
     fn calls(&self) -> usize {
-        self.calls.get()
+        self.calls.load(Ordering::Relaxed)
     }
 }
 
 impl TextExtractor for StaticExtractor {
     fn extract_pages(&self, _path: &Path) -> Result<ExtractedText, TextExtraction> {
-        self.calls.set(self.calls.get() + 1);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         Ok(self.extracted.clone())
     }
 }
 
 struct FailingExtractor {
-    calls: Cell<usize>,
+    calls: AtomicUsize,
 }
 
 impl FailingExtractor {
     fn new() -> Self {
         Self {
-            calls: Cell::new(0),
+            calls: AtomicUsize::new(0),
         }
     }
 
     fn calls(&self) -> usize {
-        self.calls.get()
+        self.calls.load(Ordering::Relaxed)
     }
 }
 
 impl TextExtractor for FailingExtractor {
     fn extract_pages(&self, _path: &Path) -> Result<ExtractedText, TextExtraction> {
-        self.calls.set(self.calls.get() + 1);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         Err(TextExtraction::EmptyInput)
     }
 }
@@ -250,11 +250,11 @@ async fn non_pdf_text_asset_bypasses_ocr_selector() {
     .with_chunk_options(ChunkOptions { target_tokens: 10 })
     .with_ocr_policy(OcrFallbackPolicy::on_quality_warning());
 
-    let outcome = executor
-        .run_next_with_ocr(&mut store, &files, &TextFileExtractor, &ocr)
-        .await
-        .expect("run executor")
-        .expect("claimed job");
+    let (returned_store, outcome_result) = executor
+        .run_next_with_ocr(store, &files, &TextFileExtractor, &ocr)
+        .await;
+    store = returned_store;
+    let outcome = outcome_result.expect("run executor").expect("claimed job");
 
     assert_eq!(outcome.page_count, 1);
     assert_eq!(ocr.calls(), 0);
@@ -295,11 +295,11 @@ async fn incompatible_ocr_page_boundaries_record_durable_job_warning() {
     .with_chunk_options(ChunkOptions { target_tokens: 10 })
     .with_ocr_policy(OcrFallbackPolicy::on_quality_warning());
 
-    let outcome = executor
-        .run_next_with_ocr(&mut store, &files, &embedded, &ocr)
-        .await
-        .expect("run executor")
-        .expect("claimed job");
+    let (returned_store, outcome_result) = executor
+        .run_next_with_ocr(store, &files, &embedded, &ocr)
+        .await;
+    store = returned_store;
+    let outcome = outcome_result.expect("run executor").expect("claimed job");
 
     assert_eq!(
         outcome.warnings,
