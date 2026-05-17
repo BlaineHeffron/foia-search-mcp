@@ -15,6 +15,7 @@ impl FoiaSearchRuntime {
         let sources = Arc::new(configured_sources(&config));
         let worker =
             QueuedIngestionWorker::new(config.data_dir.clone(), sources.iter().cloned().collect())
+                .with_ocr_policy(config.ocr_fallback_policy)
                 .spawn();
         let server = match worker.kick_handle() {
             Some(kick) => FoiaSearchServer::from_parts(config, sources).with_ingestion_worker(kick),

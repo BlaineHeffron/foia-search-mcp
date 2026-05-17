@@ -6,6 +6,24 @@ Working checkpoint after `c34ca8b` (`feat(ingest): kick queued worker`).
 This session adds focused executor-level resume coverage using the
 existing durable job status, stage, progress, lease, and upsert fields.
 
+Additional checkpoint after the OCR fallback seam slice:
+
+- Added an opt-in PDF OCR fallback policy: `FOIA_SEARCH_OCR_FALLBACK=off|on_quality_warning`,
+  defaulting to `off`.
+- Added fake-testable OCR selection seams in `src/ingest/ocr.rs` and
+  `src/ingest/pdf_text.rs`. PDF ingestion still extracts embedded text first.
+  When embedded text has quality warnings and the policy is enabled, a caller-
+  supplied OCR extractor may replace the page text only when page counts and
+  page numbers match. If embedded extraction fails and policy is enabled, OCR may
+  rescue the job. The default OCR extractor is a no-op unavailable extractor; no
+  real `ocrmypdf` or `tesseract` command is executed yet.
+- Refactored ingestion persistence so the executor can persist already-selected
+  extracted pages with the selected `TextSource`, preserving `local_ocr`
+  provenance when the seam selects OCR.
+- Added focused selector tests outside `src/ingest/executor_tests.rs`, including
+  no-warning/no-OCR, disabled policy, enabled OCR, OCR failure fallback, embedded
+  failure rescue, and non-PDF text asset bypass coverage.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -60,7 +78,14 @@ Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_S
 ## Next Tasks
 
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
-- Decide how local OCR fallback is selected when embedded PDF text produces quality warnings.
+- Decide whether the first real OCR backend should be `ocrmypdf`, `tesseract`,
+  or a two-step adapter that can support both.
+- Wire a real local OCR extractor behind the existing `TextExtractor` seam using
+  structured command arguments and bounded temp outputs. Preserve the current
+  default-off policy.
+- Decide whether OCR fallback incompatibility should become a recorded job
+  warning. The current seam keeps embedded text silently when OCR page boundaries
+  differ so citation page numbers remain tied to embedded extraction.
 - Add a full process-level crash/restart smoke test once the worker can be driven
   through a durable fixture without depending on live source HTTP.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.

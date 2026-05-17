@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::ingest::OcrFallbackPolicy;
 use serde::Serialize;
 
 const DEFAULT_DATA_DIR_NAME: &str = ".foia-search";
@@ -9,6 +10,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub nara_api_key: Option<String>,
     pub nara_api_base_url: String,
+    pub ocr_fallback_policy: OcrFallbackPolicy,
 }
 
 impl Config {
@@ -23,11 +25,15 @@ impl Config {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "https://catalog.archives.gov/api/v2".to_owned());
+        let ocr_fallback_policy = OcrFallbackPolicy::from_env_value(
+            std::env::var("FOIA_SEARCH_OCR_FALLBACK").ok().as_deref(),
+        );
 
         Self {
             data_dir,
             nara_api_key,
             nara_api_base_url,
+            ocr_fallback_policy,
         }
     }
 
@@ -108,6 +114,7 @@ mod tests {
             data_dir: PathBuf::from("/tmp/foia-search-test"),
             nara_api_key: Some("key".to_string()),
             nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
         };
 
         let nara = config

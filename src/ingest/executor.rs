@@ -1,6 +1,8 @@
 use crate::ingest::{
     download::store_cache_policy,
-    pipeline::{ingest_text_file, ingest_with_extractor},
+    ocr::{NoopOcrExtractor, OcrFallbackPolicy},
+    pdf_text::select_pdf_text,
+    pipeline::{ingest_extracted_text, ingest_text_file},
     source_plan::plan_source_ingestion,
     AssetDownloadRequest, AssetDownloader, ChunkOptions, DownloadError, IngestError,
     IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtractor,
@@ -20,6 +22,7 @@ pub struct QueuedIngestionExecutor {
     downloader: AssetDownloader,
     chunk_options: ChunkOptions,
     force_download: bool,
+    ocr_policy: OcrFallbackPolicy,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,6 +58,7 @@ impl QueuedIngestionExecutor {
             downloader: AssetDownloader::new()?,
             chunk_options: ChunkOptions::default(),
             force_download: false,
+            ocr_policy: OcrFallbackPolicy::off(),
         })
     }
 
@@ -73,11 +77,27 @@ impl QueuedIngestionExecutor {
         self
     }
 
+    pub fn with_ocr_policy(mut self, ocr_policy: OcrFallbackPolicy) -> Self {
+        self.ocr_policy = ocr_policy;
+        self
+    }
+
     pub async fn run_next(
         &self,
         store: &mut SqliteStore,
         files: &ContentAddressedStore,
         pdf_extractor: &dyn TextExtractor,
+    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
+        self.run_next_with_ocr(store, files, pdf_extractor, &NoopOcrExtractor)
+            .await
+    }
+
+    pub async fn run_next_with_ocr(
+        &self,
+        store: &mut SqliteStore,
+        files: &ContentAddressedStore,
+        pdf_extractor: &dyn TextExtractor,
+        ocr_extractor: &dyn TextExtractor,
     ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
         let lease = self.lease(store)?;
         let Some(job) = store.claim_next_ingestion_job(&lease)? else {
@@ -85,7 +105,7 @@ impl QueuedIngestionExecutor {
         };
 
         match self
-            .execute_claimed_job(store, files, pdf_extractor, &job)
+            .execute_claimed_job(store, files, pdf_extractor, ocr_extractor, &job)
             .await
         {
             Ok(outcome) => {
@@ -110,6 +130,7 @@ impl QueuedIngestionExecutor {
         store: &mut SqliteStore,
         files: &ContentAddressedStore,
         pdf_extractor: &dyn TextExtractor,
+        ocr_extractor: &dyn TextExtractor,
         job: &IngestionJobRecord,
     ) -> Result<ExecutorJobOutcome, ExecutorError> {
         let adapter = self.source_adapter(&job.source)?;
@@ -173,12 +194,19 @@ impl QueuedIngestionExecutor {
             Some("Extracting page text and building chunks."),
         )?;
         let outcome = if plan.asset.role == SourceAssetRole::Pdf {
-            ingest_with_extractor(
-                store,
+            let selected = select_pdf_text(
                 &downloaded.path,
+                pdf_extractor,
+                ocr_extractor,
+                self.ocr_policy,
+            )
+            .map_err(IngestError::from)?;
+            ingest_extracted_text(
+                store,
                 plan.document,
                 &self.chunk_options,
-                pdf_extractor,
+                selected.extracted,
+                Some(selected.text_source),
             )?
         } else {
             ingest_text_file(store, &downloaded.path, plan.document, &self.chunk_options)?

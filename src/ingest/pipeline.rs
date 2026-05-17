@@ -1,6 +1,6 @@
 use crate::ingest::{
     chunk::{chunk_pages, ChunkError, ChunkOptions},
-    pdf::{TextExtraction, TextExtractor, TextFileExtractor},
+    pdf::{ExtractedText, TextExtraction, TextExtractor, TextFileExtractor},
 };
 use crate::store::{
     ChunkInput, DocumentKey, PageInput, SqliteStore, StoreError, TextSource, UpsertDocument,
@@ -95,6 +95,17 @@ pub fn ingest_with_extractor(
     extractor: &dyn TextExtractor,
 ) -> Result<IngestOutcome, IngestError> {
     let extracted = extractor.extract_pages(path)?;
+    ingest_extracted_text(store, document, chunk_options, extracted, None)
+}
+
+pub fn ingest_extracted_text(
+    store: &mut SqliteStore,
+    document: IngestDocument,
+    chunk_options: &ChunkOptions,
+    extracted: ExtractedText,
+    text_source: Option<TextSource>,
+) -> Result<IngestOutcome, IngestError> {
+    let text_source = text_source.unwrap_or(document.text_source);
     let chunks = chunk_pages(&extracted.pages, chunk_options)?;
     let pages = extracted
         .pages
@@ -103,7 +114,7 @@ pub fn ingest_with_extractor(
             document_key: document.document_key.clone(),
             page_number: i64::from(page.page_number),
             text: page.text.clone(),
-            text_source: document.text_source,
+            text_source,
             quality_score: None,
             warnings_json: "[]".to_owned(),
         })

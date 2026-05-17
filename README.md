@@ -105,6 +105,9 @@ Rust:
 - `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`.
 - `FOIA_SEARCH_NARA_API_KEY`: required for NARA adapter requests.
 - `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2`.
+- `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
+  set to `on_quality_warning` to enable the PDF fallback selection seam once a
+  real local OCR extractor is wired.
 
 TypeScript draft:
 

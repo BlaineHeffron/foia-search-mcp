@@ -4,7 +4,11 @@ pub mod executor;
 #[cfg(test)]
 mod executor_tests;
 pub mod jobs;
+pub mod ocr;
 pub mod pdf;
+pub mod pdf_text;
+#[cfg(test)]
+mod pdf_text_tests;
 pub mod pdftotext;
 pub mod pipeline;
 pub mod source_plan;
@@ -17,7 +21,9 @@ pub use download::{
 };
 pub use executor::{ExecutorError, ExecutorJobOutcome, QueuedIngestionExecutor};
 pub use jobs::{IngestionJobLease, IngestionJobRecord};
+pub use ocr::{NoopOcrExtractor, OcrFallbackMode, OcrFallbackPolicy};
 pub use pdf::{ExtractedText, TextExtraction, TextExtractor, TextFileExtractor};
+pub use pdf_text::{select_pdf_text, SelectedPdfText};
 pub use pdftotext::{PdftotextConfig, PdftotextExtractor};
 pub use pipeline::{ingest_text_file, IngestDocument, IngestError, IngestOutcome};
 pub use source_plan::{

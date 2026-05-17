@@ -1,5 +1,6 @@
 use crate::ingest::{
-    ExecutorError, ExecutorJobOutcome, PdftotextExtractor, QueuedIngestionExecutor, TextExtractor,
+    ExecutorError, ExecutorJobOutcome, OcrFallbackPolicy, PdftotextExtractor,
+    QueuedIngestionExecutor, TextExtractor,
 };
 use crate::sources::SourceAdapter;
 use crate::store::{ContentAddressedStore, SqliteStore, StoreError};
@@ -17,6 +18,7 @@ pub struct QueuedIngestionWorker {
     data_dir: PathBuf,
     sources: Vec<Arc<dyn SourceAdapter>>,
     poll_interval: Duration,
+    ocr_policy: OcrFallbackPolicy,
 }
 
 #[derive(Debug)]
@@ -60,7 +62,13 @@ impl QueuedIngestionWorker {
             data_dir: data_dir.into(),
             sources,
             poll_interval: DEFAULT_POLL_INTERVAL,
+            ocr_policy: OcrFallbackPolicy::off(),
         }
+    }
+
+    pub fn with_ocr_policy(mut self, ocr_policy: OcrFallbackPolicy) -> Self {
+        self.ocr_policy = ocr_policy;
+        self
     }
 
     pub fn spawn(self) -> IngestionWorkerHandle {
@@ -85,7 +93,8 @@ impl QueuedIngestionWorker {
     ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
         let mut store = self.open_store()?;
         let files = ContentAddressedStore::new(&self.data_dir);
-        let executor = QueuedIngestionExecutor::new("foia-ingest-worker", self.sources.clone())?;
+        let executor = QueuedIngestionExecutor::new("foia-ingest-worker", self.sources.clone())?
+            .with_ocr_policy(self.ocr_policy);
         executor
             .run_next(&mut store, &files, pdf_extractor)
             .await
