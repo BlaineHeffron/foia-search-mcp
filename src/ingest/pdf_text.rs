@@ -1,5 +1,6 @@
 use crate::ingest::ocr::{
-    OcrFallbackPolicy, OCR_FALLBACK_RESCUED_WARNING, OCR_FALLBACK_USED_WARNING,
+    OcrFallbackPolicy, OCR_FALLBACK_INCOMPATIBLE_WARNING, OCR_FALLBACK_RESCUED_WARNING,
+    OCR_FALLBACK_USED_WARNING,
 };
 use crate::ingest::pdf::{ExtractedText, TextExtraction, TextExtractor};
 use crate::store::TextSource;
@@ -62,7 +63,17 @@ fn select_after_embedded_success(
                 text_source: TextSource::LocalOcr,
             })
         }
-        Ok(_) | Err(_) => Ok(SelectedPdfText {
+        Ok(_) => {
+            let mut embedded = embedded;
+            embedded
+                .warnings
+                .push(OCR_FALLBACK_INCOMPATIBLE_WARNING.to_owned());
+            Ok(SelectedPdfText {
+                extracted: embedded,
+                text_source: TextSource::EmbeddedPdfText,
+            })
+        }
+        Err(_) => Ok(SelectedPdfText {
             extracted: embedded,
             text_source: TextSource::EmbeddedPdfText,
         }),

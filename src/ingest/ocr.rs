@@ -7,6 +7,8 @@ pub const OCR_FALLBACK_USED_WARNING: &str =
     "local OCR fallback was used after embedded PDF text quality warnings";
 pub const OCR_FALLBACK_RESCUED_WARNING: &str =
     "local OCR fallback was used after embedded PDF text extraction failed";
+pub const OCR_FALLBACK_INCOMPATIBLE_WARNING: &str =
+    "local OCR fallback output was ignored because OCR page boundaries/page numbers did not match embedded PDF text";
 const DEFAULT_OCR_TIMEOUT: Duration = Duration::from_secs(300);
 const DEFAULT_MAX_STDERR_BYTES: usize = 8 * 1024;
 

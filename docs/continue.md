@@ -91,6 +91,17 @@ Additional checkpoint after the process-restart partial-persistence slice:
   content matching fixture text without live source HTTP or local OCR/PDF
   binaries.
 
+Additional checkpoint after the OCR mismatch warning slice:
+
+- When embedded PDF extraction has quality warnings and OCR fallback is enabled,
+  selector attempts that return OCR output with incompatible page counts/page
+  numbers now add a warning instead of silently falling back.
+- Citation safety behavior is unchanged: embedded text is still selected when
+  OCR boundaries differ, preserving embedded page-number provenance.
+- The incompatibility message now flows through existing extraction warnings to
+  durable ingestion job warnings, with focused selector and executor-path tests
+  in `src/ingest/pdf_text_tests.rs`.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -149,9 +160,6 @@ iteration to finish.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
-- Decide whether OCR fallback incompatibility should become a recorded job
-  warning. The current seam keeps embedded text silently when OCR page boundaries
-  differ so citation page numbers remain tied to embedded extraction.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
 - Add mid-job cancellation/interruption. Current shutdown waits for the active executor iteration to finish; it does not mark an in-flight job interrupted immediately when the MCP process is asked to stop.
 

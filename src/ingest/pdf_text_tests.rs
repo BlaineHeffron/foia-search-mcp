@@ -1,3 +1,4 @@
+use crate::ingest::ocr::OCR_FALLBACK_INCOMPATIBLE_WARNING;
 use crate::ingest::{
     select_pdf_text, ChunkOptions, ExtractedText, OcrFallbackPolicy, PageText,
     QueuedIngestionExecutor, TextExtraction, TextExtractor, TextFileExtractor,
@@ -149,7 +150,10 @@ fn incompatible_ocr_page_boundaries_keep_embedded_pdf_text() {
     assert_eq!(selected.text_source, TextSource::EmbeddedPdfText);
     assert_eq!(selected.extracted.pages[0].text, "thin one");
     assert_eq!(selected.extracted.pages[1].text, "thin two");
-    assert_eq!(selected.extracted.warnings, vec!["low density"]);
+    assert_eq!(
+        selected.extracted.warnings,
+        vec!["low density", OCR_FALLBACK_INCOMPATIBLE_WARNING]
+    );
     assert_eq!(ocr.calls(), 1);
 }
 
@@ -233,6 +237,67 @@ async fn non_pdf_text_asset_bypasses_ocr_selector() {
         .expect("stored page text");
     assert_eq!(pages[0].text_source, "source_ocr");
     assert_eq!(pages[0].text, "source OCR page");
+}
+
+#[tokio::test]
+async fn incompatible_ocr_page_boundaries_record_durable_job_warning() {
+    let asset_url = fixture_pdf_http_url(b"%PDF mismatch body");
+    let mut store = SqliteStore::open_memory().expect("open store");
+    store
+        .create_ingestion_job(&NewIngestionJob {
+            job_key: "ingest:cia:CREST-ocr-pdf".to_owned(),
+            operation: "ingest".to_owned(),
+            source: "cia".to_owned(),
+            source_id: Some("CREST-ocr-pdf".to_owned()),
+            target_url: None,
+            next_action: "queued".to_owned(),
+        })
+        .expect("create job");
+    let files_dir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(files_dir.path());
+    let embedded = StaticExtractor::new(extracted(&["thin one", "thin two"], vec!["low density"]));
+    let mut ocr_extracted = extracted(&["ocr mismatch"], vec!["ocr warning"]);
+    ocr_extracted.pages[0].page_number = 99;
+    let ocr = StaticExtractor::new(ocr_extracted);
+    let executor = QueuedIngestionExecutor::new(
+        "ocr-mismatch-worker",
+        vec![Arc::new(FakeAdapter {
+            record: source_pdf_record(asset_url),
+        })],
+    )
+    .expect("executor")
+    .with_chunk_options(ChunkOptions { target_tokens: 10 })
+    .with_ocr_policy(OcrFallbackPolicy::on_quality_warning());
+
+    let outcome = executor
+        .run_next_with_ocr(&mut store, &files, &embedded, &ocr)
+        .await
+        .expect("run executor")
+        .expect("claimed job");
+
+    assert_eq!(
+        outcome.warnings,
+        vec![
+            "low density".to_owned(),
+            OCR_FALLBACK_INCOMPATIBLE_WARNING.to_owned()
+        ]
+    );
+    let job = store
+        .get_ingestion_job_record("ingest:cia:CREST-ocr-pdf")
+        .expect("job");
+    assert_eq!(
+        job.warnings,
+        vec![
+            "low density".to_owned(),
+            OCR_FALLBACK_INCOMPATIBLE_WARNING.to_owned()
+        ]
+    );
+    let pages = store
+        .get_page_text("cia:CREST-ocr-pdf", 1, 2)
+        .expect("stored page text");
+    assert_eq!(pages[0].text, "thin one");
+    assert_eq!(pages[1].text, "thin two");
+    assert_eq!(ocr.calls(), 1);
 }
 
 fn extracted(pages: &[&str], warnings: Vec<&str>) -> ExtractedText {
@@ -319,6 +384,33 @@ fn source_ocr_record(asset_url: String) -> SourceRecord {
     }
 }
 
+fn source_pdf_record(asset_url: String) -> SourceRecord {
+    SourceRecord {
+        id: "cia:CREST-ocr-pdf".to_owned(),
+        document_key: "cia_CREST-ocr-pdf".to_owned(),
+        source: "cia",
+        source_id: "CREST-ocr-pdf".to_owned(),
+        title: "OCR PDF Fixture".to_owned(),
+        date: None,
+        collection: Some("CREST".to_owned()),
+        record_group: None,
+        description: Some("ocr mismatch executor test".to_owned()),
+        origin_url: "https://www.cia.gov/readingroom/document/CREST-ocr-pdf".to_owned(),
+        document_url: "https://www.cia.gov/readingroom/document/CREST-ocr-pdf".to_owned(),
+        pdf_url: Some(asset_url.clone()),
+        metadata: SourceMetadata::new(),
+        attachments: vec![SourceAsset {
+            asset_url,
+            label: "PDF".to_owned(),
+            mime_type: Some("application/pdf".to_owned()),
+            role: SourceAssetRole::Pdf,
+        }],
+        text_preview: None,
+        citation_note: Some("cite source".to_owned()),
+        terms_note: Some("terms".to_owned()),
+    }
+}
+
 fn fixture_http_url(body: &'static [u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture server");
     let addr = listener.local_addr().expect("fixture addr");
@@ -335,6 +427,24 @@ fn fixture_http_url(body: &'static [u8]) -> String {
         }
     });
     format!("http://{addr}/fixture.txt")
+}
+
+fn fixture_pdf_http_url(body: &'static [u8]) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture server");
+    let addr = listener.local_addr().expect("fixture addr");
+    thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            read_http_request(&mut stream);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            )
+            .expect("write response headers");
+            stream.write_all(body).expect("write response body");
+        }
+    });
+    format!("http://{addr}/fixture.pdf")
 }
 
 fn read_http_request(stream: &mut TcpStream) {
