@@ -2,9 +2,9 @@
 
 ## Current State
 
-Working checkpoint after `240729e` (`feat: wire queued ingestion worker`).
-This session adds an explicit MCP enqueue-to-worker kick path so queued ingestion
-does not wait for the bounded idle polling interval when the worker is alive.
+Working checkpoint after `c34ca8b` (`feat(ingest): kick queued worker`).
+This session adds focused executor-level resume coverage using the
+existing durable job status, stage, progress, lease, and upsert fields.
 
 Current ingestion slices now include:
 
@@ -24,6 +24,10 @@ Review fixes already included:
   the durable job row is created. If that in-memory kick is missed or the worker is
   stopped, the durable queue remains authoritative and bounded polling still picks
   up the job.
+- Executor resume tests now cover reclaiming an expired mid-stage running job,
+  replacing stale partial document/page/chunk/FTS/asset state without duplicates,
+  preserving interrupted stage/progress before resume, and failing after download
+  without leaving local document/asset/page/chunk rows.
 
 ## Validation Commands
 
@@ -51,13 +55,14 @@ Start with a read-only pass over these modules:
 - `src/runtime.rs`
 - `src/mcp/tools.rs`
 
-Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_SEARCH_DATA_DIR`, including immediate worker wakeup after MCP enqueue and behavior when `pdftotext` is missing or returns low-quality text.
+Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_SEARCH_DATA_DIR`, including immediate worker wakeup after MCP enqueue, expired-running/interrupted resume after process restart, and behavior when `pdftotext` is missing or returns low-quality text.
 
 ## Next Tasks
 
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Decide how local OCR fallback is selected when embedded PDF text produces quality warnings.
-- Add crash/restart coverage for executor resume using existing job stage/progress fields.
+- Add a full process-level crash/restart smoke test once the worker can be driven
+  through a durable fixture without depending on live source HTTP.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
 - Add mid-job cancellation/interruption. Current shutdown waits for the active executor iteration to finish; it does not mark an in-flight job interrupted immediately when the MCP process is asked to stop.
 
