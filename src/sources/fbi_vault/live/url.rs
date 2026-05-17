@@ -93,7 +93,7 @@ pub(crate) fn detail_url_from_source_id(source_id: &str, base_url: &str) -> Opti
     let base = base_url.trim_end_matches('/');
     let encoded = trimmed
         .split('/')
-        .map(percent_encode_path_segment)
+        .map(percent_encode_source_id_segment)
         .collect::<Vec<_>>()
         .join("/");
     Some(format!("{base}/{encoded}"))
@@ -117,6 +117,35 @@ pub(crate) fn percent_encode_path_segment(value: &str) -> String {
             }
             _ => encoded.push_str(&format!("%{byte:02X}")),
         }
+    }
+    encoded
+}
+
+fn percent_encode_source_id_segment(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut encoded = String::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'%'
+            && index + 2 < bytes.len()
+            && bytes[index + 1].is_ascii_hexdigit()
+            && bytes[index + 2].is_ascii_hexdigit()
+        {
+            encoded.push('%');
+            encoded.push(char::from(bytes[index + 1].to_ascii_uppercase()));
+            encoded.push(char::from(bytes[index + 2].to_ascii_uppercase()));
+            index += 3;
+            continue;
+        }
+
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(char::from(byte));
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+        index += 1;
     }
     encoded
 }

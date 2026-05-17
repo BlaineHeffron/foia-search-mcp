@@ -164,6 +164,57 @@ async fn get_record_direct_download_url_returns_single_pdf_asset() {
 }
 
 #[tokio::test]
+async fn get_record_canonicalizes_official_http_vault_url_without_redirect() {
+    let adapter = FbiVaultAdapter::default();
+
+    let record = adapter
+        .get_record(
+            "http://vault.fbi.gov/rosenberg-case/mark-page/Mark%20Page%20Part%2001/at_download/file",
+        )
+        .await
+        .expect("official HTTP Vault URL should normalize to HTTPS without redirect fetch");
+
+    assert_eq!(
+        record.pdf_url.as_deref(),
+        Some(
+            "https://vault.fbi.gov/rosenberg-case/mark-page/Mark%20Page%20Part%2001/at_download/file"
+        )
+    );
+    assert_eq!(
+        record.document_url,
+        "https://vault.fbi.gov/rosenberg-case/mark-page/Mark%20Page%20Part%2001/at_download/file"
+    );
+}
+
+#[tokio::test]
+async fn get_record_round_trips_percent_encoded_asset_source_id() {
+    let body = include_str!("fixtures/fbi_vault/mark_page.html");
+    let (base_url, requests) = serve_sequence(vec![response_html(body)]);
+    let adapter = FbiVaultAdapter::new(base_url.clone());
+    let direct_asset_url =
+        format!("{base_url}/rosenberg-case/mark-page/Mark%20Page%20Part%2001/at_download/file");
+    let direct_record = adapter
+        .get_record(&direct_asset_url)
+        .await
+        .expect("direct at_download URL should map to a stable source id");
+
+    let record = adapter
+        .get_record(&format!("fbi_vault:{}", direct_record.source_id))
+        .await
+        .expect("encoded source id should resolve without double-encoding");
+
+    assert_eq!(
+        record.source_id,
+        "rosenberg-case/mark-page/Mark%20Page%20Part%2001"
+    );
+    let requests = requests.join().expect("request capture should finish");
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0].starts_with("GET /rosenberg-case/mark-page/Mark%20Page%20Part%2001 HTTP/1.1")
+    );
+}
+
+#[tokio::test]
 async fn list_assets_orders_pdf_parts_naturally_before_non_pdf() {
     let body = include_str!("fixtures/fbi_vault/mark_page.html");
     let (base_url, _requests) = serve_sequence(vec![response_html(body)]);

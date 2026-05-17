@@ -6,7 +6,9 @@ use super::classify::{
     is_candidate_asset_link, is_candidate_record_link, title_for_search_result,
 };
 use super::html::{anchors, clean_html_text, first_non_empty, first_tag_text};
-use super::url::{absolutize, document_key, is_allowed_vault_url, source_id_from_url};
+use super::url::{
+    absolutize, canonicalize_official_url, document_key, is_allowed_vault_url, source_id_from_url,
+};
 use super::{fbi_vault_citation_note, fbi_vault_terms_note, FBI_VAULT_SOURCE};
 
 const SOURCE_WARNING: &str = "FBI Vault files can be multipart and historically uneven; preserve official page/PDF provenance and verify part ordering/page boundaries before citation.";
@@ -15,7 +17,7 @@ pub(crate) fn records_from_search_page(html: &str, base_url: &str) -> Vec<Source
     let mut records = Vec::new();
 
     for (href, text) in anchors(html) {
-        let document_url = absolutize(&href, base_url);
+        let document_url = canonicalize_official_url(&absolutize(&href, base_url), base_url);
         if !is_allowed_vault_url(&document_url, base_url) {
             continue;
         }
@@ -88,7 +90,7 @@ pub(crate) fn record_from_detail_page(
     let mut attachments = anchors(html)
         .into_iter()
         .filter_map(|(href, label)| {
-            let asset_url = absolutize(&href, record_url);
+            let asset_url = canonicalize_official_url(&absolutize(&href, record_url), base_url);
             if !is_allowed_vault_url(&asset_url, base_url) {
                 return None;
             }

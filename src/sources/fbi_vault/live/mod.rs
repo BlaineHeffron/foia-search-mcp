@@ -89,7 +89,8 @@ impl FbiVaultAdapter {
         }
 
         if value.starts_with("http://") || value.starts_with("https://") {
-            if !is_allowed_vault_url(value, &self.base_url()) {
+            let normalized = canonicalize_official_url(value, &self.base_url());
+            if !is_allowed_vault_url(&normalized, &self.base_url()) {
                 return Err(SourceError::invalid_input(
                     FBI_VAULT_SOURCE,
                     "FBI Vault lookup only accepts official vault.fbi.gov URLs.",
@@ -99,10 +100,7 @@ impl FbiVaultAdapter {
                     ),
                 ));
             }
-            return Ok(FbiVaultLocator::Url(canonicalize_official_url(
-                value,
-                &self.base_url(),
-            )));
+            return Ok(FbiVaultLocator::Url(normalized));
         }
 
         Ok(FbiVaultLocator::SourceId(value.to_owned()))
