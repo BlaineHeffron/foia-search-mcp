@@ -135,7 +135,7 @@ $FOIA_SEARCH_DATA_DIR/
 
 The file store should be content-addressed by SHA-256. Database rows should point to blob paths and preserve original source URLs, content type, ETag, Last-Modified, fetch time, and source policy notes.
 
-SQLite is the canonical store for normalized metadata, page text, chunks, job state, and FTS rows. Files under `text/` and `ocr/` are derived audit/debug artifacts only; they may help inspect extractor output, but resume and search logic must reconcile back to SQLite and may delete or regenerate them. Original PDFs, HTML, and other fetched assets remain canonical content-addressed blobs.
+SQLite is the canonical store for normalized metadata, page text, chunks, job state, and FTS rows. Files under `text/` and `ocr/` are derived audit/debug artifacts only; the Rust server now has internal report/plan/apply reconciliation for those derived artifacts against SQLite page state. Report identifies `Missing`/`Stale`/`Orphaned` drift, plan maps that into `RewriteFromSqlite` and `ManualReview` actions, and apply writes only missing/stale derived artifacts from SQLite-derived content. Original PDFs, HTML, and other fetched assets remain canonical content-addressed blobs.
 
 Never use source IDs directly in filesystem paths. Every document should get a filesystem-safe internal `document_key`, such as a generated UUID or stable hash over source plus source ID. Store external source IDs and URLs separately in SQLite.
 
@@ -285,7 +285,7 @@ The ingestion pipeline should be explicit and resumable:
 11. Write metadata, pages, chunks, and SQLite FTS entries in one database transaction.
 12. Return job status, warnings, citations, and next actions.
 
-Blob files, temp files, OCR outputs, and future Tantivy/LanceDB index writes cannot be committed atomically with SQLite. The job table should therefore store stage checkpoints and an outbox of pending file/index work. Current startup and recovery behavior is DB-centric: queued, interrupted, and expired-running jobs are claimed from SQLite, and resume paths replace stale page/chunk/FTS rows as part of that same database workflow. Reconciliation of derived `text/`, `ocr/`, and future index artifacts with the file store remains planned future work, where partial writes can eventually be detected, retried, or discarded without changing the current SQLite-first recovery path.
+Blob files, temp files, OCR outputs, and future Tantivy/LanceDB index writes cannot be committed atomically with SQLite. The job table should therefore store stage checkpoints and an outbox of pending file/index work. Current startup and recovery behavior is DB-centric: queued, interrupted, and expired-running jobs are claimed from SQLite, and resume paths replace stale page/chunk/FTS rows as part of that same database workflow. Internal report/plan/apply APIs now cover derived `text/` and `ocr/` reconciliation, but they are not invoked automatically by startup or worker recovery. Future index-artifact reconciliation remains planned follow-on work, where partial writes can eventually be detected, retried, or discarded without changing the current SQLite-first recovery path.
 
 Extraction quality should consider empty pages, very low character count, replacement characters, repeated garbage, and whether extracted pages match the PDF page count.
 
@@ -344,7 +344,7 @@ Initial tools:
 
 Tool descriptions must tell the model when to use the tool, when not to use it, and what to do with errors. Outputs should be compact, JSON-shaped, and decision-ready. Full document text should never be returned by default.
 
-`ingest_document` should enqueue durable work and return quickly with a job ID. A bounded background worker pool owns ingestion execution, with per-source concurrency limits and a process-wide cap for OCR/PDF subprocesses. Jobs need leases or locks so only one worker advances a job at a time. On shutdown, workers should stop accepting new work, let short stages finish, mark interrupted jobs resumable, and release leases. On startup, the server should recover queued/interrupted jobs before accepting new ingestion work. Broader file-store/index reconciliation for derived `text/`, `ocr/`, and future index artifacts is a planned follow-on step, not a current startup requirement.
+`ingest_document` should enqueue durable work and return quickly with a job ID. A bounded background worker pool owns ingestion execution, with per-source concurrency limits and a process-wide cap for OCR/PDF subprocesses. Jobs need leases or locks so only one worker advances a job at a time. On shutdown, workers should stop accepting new work, let short stages finish, mark interrupted jobs resumable, and release leases. On startup, the server should recover queued/interrupted jobs before accepting new ingestion work. Derived `text/` and `ocr/` reconciliation is available only through explicit internal report/plan/apply APIs for now; it is not part of startup recovery. Broader file-store/index reconciliation for future index artifacts remains a planned follow-on step, not a current startup requirement.
 
 ## Error And Output Rules
 
@@ -473,6 +473,7 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - What is the acceptable cache policy for NARA-derived metadata in this project?
 - Should semantic/vector search be deferred until after GovInfo/FRUS/NOAA adapters are implemented?
 - What source-warning contract should sensitive collections such as DOJ Epstein use so privacy/victim-identification cautions persist through search, ingestion, and local retrieval?
+- Should derived-artifact reconciliation stay internal, or should a future operator-facing MCP/tool/CLI surface expose it?
 
 ## Reference Notes
 

@@ -238,7 +238,7 @@ Additional checkpoint after the GovInfo live API adapter slice:
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
-- Startup/recovery is currently DB-centric: the worker reclaims queued/interrupted/expired-running jobs from SQLite, and resume tests cover stale page/chunk/FTS replacement. Broader reconciliation of derived `text/`, `ocr/`, and future index artifacts remains future work.
+- Startup/recovery is currently DB-centric: the worker reclaims queued/interrupted/expired-running jobs from SQLite, and resume tests cover stale page/chunk/FTS replacement. Derived `text/` and `ocr/` reconciliation APIs now exist internally, but they are not wired into startup or worker recovery; future index-artifact reconciliation remains follow-on work.
 - Source-record planning from normalized `SourceRecord` values into ingestion documents and selected assets.
 - Bounded asset downloading into the content-addressed file store with cache provenance, ETag/Last-Modified revalidation, and `DoNotPersist` cache semantics.
 - External `pdftotext` extraction with structured command arguments, timeout handling, bounded stderr capture, temp output validation, and text-quality warnings.
@@ -279,6 +279,23 @@ Additional checkpoint after the FBI Vault adapter slice:
   `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`; tests use
   deterministic loopback fixtures and do not require live network access.
 
+Additional checkpoint after the derived-artifact reconciliation slice:
+
+- Added internal derived-artifact reconciliation APIs for derived `text/` and
+  `ocr/` files. `reconcile_derived_artifacts_for_document` reports
+  `Missing`/`Stale`/`Orphaned` drift against SQLite page state,
+  `plan_derived_artifact_repairs` turns that report into
+  `RewriteFromSqlite`/`ManualReview` actions, and
+  `apply_derived_artifact_repairs` performs opt-in writes for missing/stale
+  derived artifacts from SQLite-derived content.
+- SQLite remains canonical for normalized metadata, page text, chunks, job
+  state, and FTS rows. Reconciliation does not mutate canonical DB rows or
+  blobs, does not delete orphaned artifacts automatically, and is not wired
+  into runtime/startup/worker/MCP auto-repair yet.
+- The remaining product/design decision is whether any operator-facing
+  MCP/tool/CLI surface should expose these internal repair APIs; future
+  index-artifact reconciliation stays a separate follow-on slice.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
@@ -298,17 +315,11 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 
 ## First Action Next Session
 
-Start with a read-only pass over these modules:
-
-- `src/ingest/worker.rs`
-- `src/ingest/worker_ocr.rs`
-- `src/ingest/executor.rs`
-- `src/ingest/cancel.rs`
-- `src/ingest/process.rs`
-- `src/runtime.rs`
-- `src/mcp/tools.rs`
-
-Then pick the next ingestion hardening item from the task list below.
+Start with a read-only pass over `src/ingest/reconcile.rs` and the current
+runtime/MCP wiring decision points only if you need to decide whether the
+internal repair APIs should ever be exposed. Do not add automatic repair to
+startup; if no operator-facing surface is justified, keep the repair APIs
+internal and move on to index-artifact reconciliation planning.
 
 ## Next Tasks
 
@@ -330,9 +341,10 @@ Then pick the next ingestion hardening item from the task list below.
   hop validation mandatory and preserve the current default-deny posture.
 - Add a later `tesseract` backend only if a concrete source/OCR need appears;
   the backend config already has a small enum shape for another local backend.
-- No runtime `Send` follow-up is pending from this handoff; next work should
-  begin with the read-only pass below, then choose the next hardening or
-  source-adapter slice based on that review.
+- Derived-artifact repair stays an internal ingest capability for now. The next
+  product/design decision is whether to expose it through any operator-facing
+  MCP/tool/CLI surface; keep runtime/startup/worker wiring untouched until that
+  decision is made.
 
 ## Constraints
 
