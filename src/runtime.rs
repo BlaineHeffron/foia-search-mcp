@@ -2,8 +2,8 @@ use crate::config::Config;
 use crate::ingest::worker::{IngestionWorkerHandle, QueuedIngestionWorker};
 use crate::mcp::tools::FoiaSearchServer;
 use crate::sources::{
-    cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter,
-    pursue::PursueAdapter, SourceAdapter,
+    cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
+    govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter, SourceAdapter,
 };
 use std::sync::Arc;
 
@@ -48,5 +48,6 @@ fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
         Arc::new(GovInfoAdapter::default()),
         Arc::new(PursueAdapter::from_env()),
         Arc::new(DojEpsteinAdapter::from_env()),
+        Arc::new(DojFoiaAdapter::from_env()),
     ]
 }

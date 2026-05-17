@@ -26,7 +26,7 @@ const MAX_TEXT_PAGE_RANGE: u32 = 50;
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
     #[schemars(
-        description = "Single source to search: cia, nara, govinfo, pursue, doj_epstein, frus, dtic, or noaa"
+        description = "Single source to search: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
     )]
     source: String,
     #[schemars(description = "Research query to send to the source adapter")]
@@ -40,7 +40,7 @@ struct SearchSourceParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSourceRecordParams {
     #[schemars(
-        description = "Source adapter name: cia, nara, govinfo, pursue, doj_epstein, frus, dtic, or noaa"
+        description = "Source adapter name: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
     )]
     source: String,
     #[schemars(description = "Source record ID or canonical source URL")]
@@ -50,7 +50,7 @@ struct GetSourceRecordParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct IngestDocumentParams {
     #[schemars(
-        description = "Document ID such as cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, or doj_epstein:data-set-1-files"
+        description = "Document ID such as cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, doj_epstein:data-set-1-files, or doj_foia:criminal-division"
     )]
     document_id: String,
     #[schemars(description = "Force re-fetching source assets even if already cached")]
@@ -68,7 +68,7 @@ struct SearchLocalDocumentsParams {
     #[schemars(description = "Keyword query over locally ingested document text and metadata")]
     query: String,
     #[schemars(
-        description = "Optional source filter: cia, nara, govinfo, pursue, doj_epstein, frus, dtic, or noaa"
+        description = "Optional source filter: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
     )]
     source: Option<String>,
     #[schemars(description = "Maximum local results to return. Default 10, maximum 100")]
@@ -125,35 +125,16 @@ impl FoiaSearchServer {
                 if status.enabled {
                     status.status = "enabled".to_owned();
                 }
-                status.note = match adapter.name() {
-                    "cia" => {
-                        "CIA Reading Room adapter is wired for HTTP search and record fetch."
-                            .to_owned()
-                    }
-                    "nara" if status.enabled => {
-                        "NARA Catalog adapter is wired for API-key HTTP search and record fetch; persistent API response caching is disabled by policy.".to_owned()
-                    }
-                    "nara" => {
-                        "Set FOIA_SEARCH_NARA_API_KEY before calling the NARA adapter.".to_owned()
-                    }
-                    "govinfo" => {
-                        "GovInfo adapter is wired for Search Service queries and package/granule summary fetches; API response caching follows source headers.".to_owned()
-                    }
-                    "pursue" => {
-                        "PURSUE/war.gov adapter is wired for release-tranche search and official linked assets; PDFs are ingest-preferred while images/videos remain metadata assets.".to_owned()
-                    }
-                    "doj_epstein" => {
-                        "DOJ Epstein adapter is wired for official DOJ disclosure leads and detail pages; sensitive-content warnings must be preserved and PDFs remain ingest-preferred over non-PDF media.".to_owned()
-                    }
-                    _ => status.note.clone(),
-                };
+                status.note =
+                    crate::mcp::sources::list_sources_note(adapter.name(), status.enabled)
+                        .unwrap_or_else(|| status.note.clone());
             }
         }
         json_result(&statuses)
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA, GovInfo, PURSUE, and DOJ Epstein are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA, GovInfo, PURSUE, DOJ Epstein, and DOJ component FOIA are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -183,7 +164,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. CIA, GovInfo, PURSUE, and DOJ Epstein are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
+        description = "Fetch a normalized record from one source by source ID or URL. CIA, GovInfo, PURSUE, DOJ Epstein, and DOJ component FOIA are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,
@@ -381,26 +362,7 @@ impl ServerHandler for FoiaSearchServer {
 }
 
 pub(crate) fn validate_source(source: &str) -> Result<(), McpError> {
-    const VALID_SOURCES: &[&str] = &[
-        "cia",
-        "nara",
-        "govinfo",
-        "pursue",
-        "doj_epstein",
-        "frus",
-        "dtic",
-        "noaa",
-    ];
-    if VALID_SOURCES.contains(&source) {
-        Ok(())
-    } else {
-        Err(FoiaSearchError::InvalidRequest(format!(
-            "invalid source '{}'; expected one of: {}",
-            source,
-            VALID_SOURCES.join(", ")
-        ))
-        .into_mcp_error())
-    }
+    crate::mcp::sources::validate_source_name(source)
 }
 
 fn ingestion_job_from_stored(job: StoredIngestionJob) -> IngestionJob {
@@ -594,6 +556,7 @@ mod tests {
             "govinfo",
             "pursue",
             "doj_epstein",
+            "doj_foia",
             "frus",
             "dtic",
             "noaa",
@@ -605,7 +568,7 @@ mod tests {
         assert!(error.message.contains("invalid source"));
         assert!(error
             .message
-            .contains("cia, nara, govinfo, pursue, doj_epstein, frus, dtic, noaa"));
+            .contains("cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, noaa"));
     }
 
     #[test]

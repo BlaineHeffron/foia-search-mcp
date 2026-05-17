@@ -71,4 +71,8 @@
     <question>Find a DOJ Epstein disclosure lead, retrieve its record details, and report sensitivity plus provenance context.</question>
     <expected>Call list_sources, then search_source with source "doj_epstein" using terms like "data set", "court records", or "foia"; call get_source_record for one returned lead id/URL; report DOJ sensitivity/privacy warning, citation/terms notes, category provenance (e.g., efta_data_set/court_record/foia/prior_doj_disclosure), and that PDFs are ingest-preferred while image/audio/video remain metadata assets.</expected>
   </eval>
+  <eval id="19">
+    <question>Find a DOJ component FOIA/disclosure lead from the OIP all-components index, then fetch one component record and report provenance and citation context.</question>
+    <expected>Call list_sources, then search_source with source "doj_foia" using a component-oriented query; call get_source_record for one returned doj_foia id/URL; report component name, disclosure category/provenance from the OIP index, official component URL, and citation/terms guidance including PDF-preferred ingestion and conservative HTML/other asset handling.</expected>
+  </eval>
 </evals>

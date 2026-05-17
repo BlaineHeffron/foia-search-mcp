@@ -93,6 +93,12 @@ impl Config {
                 note: "DOJ Epstein Library adapter is available for official DOJ disclosure leads; preserve sensitivity/privacy warnings and prefer PDF ingestion while images/audio/video remain metadata assets.".to_string(),
             },
             SourceStatus {
+                name: "doj_foia".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "DOJ component FOIA/disclosure adapter is available from the OIP all-components index; cite official component pages and prefer PDF assets while treating HTML/other links as conservative metadata leads.".to_string(),
+            },
+            SourceStatus {
                 name: "frus".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
@@ -215,6 +221,27 @@ mod tests {
         assert_eq!(doj_epstein.status, "available");
         assert!(doj_epstein.note.contains("DOJ Epstein Library adapter"));
         assert!(doj_epstein.note.contains("sensitivity/privacy warnings"));
+    }
+
+    #[test]
+    fn source_status_reports_doj_foia_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let doj_foia = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "doj_foia")
+            .expect("doj_foia source should be listed");
+
+        assert_eq!(doj_foia.status, "available");
+        assert!(doj_foia.note.contains("OIP all-components index"));
+        assert!(doj_foia.note.contains("prefer PDF assets"));
     }
 
     #[test]
