@@ -125,8 +125,9 @@ impl Config {
             SourceStatus {
                 name: "noaa".to_string(),
                 enabled: false,
-                status: "planned".to_string(),
-                note: "NOAA repository adapter is planned.".to_string(),
+                status: "available".to_string(),
+                note: "NOAA Institutional Repository adapter is available for official repository.library.noaa.gov publication/report leads; preserve office/program, DOI/report metadata, and prefer repository PDF assets."
+                    .to_string(),
             },
         ]
     }
@@ -317,6 +318,27 @@ mod tests {
         assert_eq!(frus.status, "available");
         assert!(frus.note.contains("history.state.gov"));
         assert!(frus.note.contains("TEI/XML"));
+    }
+
+    #[test]
+    fn source_status_reports_noaa_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let noaa = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "noaa")
+            .expect("noaa source should be listed");
+
+        assert_eq!(noaa.status, "available");
+        assert!(noaa.note.contains("repository.library.noaa.gov"));
+        assert!(noaa.note.contains("prefer repository PDF assets"));
     }
 
     #[test]

@@ -87,4 +87,8 @@
     <question>Find a FRUS document lead about strategic arms talks, retrieve one normalized FRUS record, and summarize citation-critical provenance.</question>
     <expected>Call list_sources, then search_source with source "frus" and a FRUS-focused query; call get_source_record using a returned frus source id or official history.state.gov URL; report document number/title, volume title, official document URL, citation note, terms note, and metadata fields for persons/places/topics plus TEI/XML and PDF links.</expected>
   </eval>
+  <eval id="23">
+    <question>Find a NOAA Institutional Repository technical-report lead, fetch one NOAA record, and summarize citation-critical provenance.</question>
+    <expected>Call list_sources, then search_source with source "noaa" and a NOAA report-oriented query; call get_source_record using a returned noaa id or official repository.library.noaa.gov URL; report official repository URL, PDF URL when present, DOI/report number and NOAA office/program metadata, plus NOAA citation and terms notes with rights/license caution.</expected>
+  </eval>
 </evals>

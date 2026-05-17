@@ -65,6 +65,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
             "FBI Vault adapter is wired for official vault.fbi.gov search and file pages; preserve multipart part-order metadata and cite official Vault page/PDF URLs."
                 .to_owned(),
         ),
+        "noaa" => Some(
+            "NOAA Institutional Repository adapter is wired for official repository.library.noaa.gov report/publication leads; preserve office/program metadata and prefer repository PDF assets with official item URLs."
+                .to_owned(),
+        ),
         _ => None,
     }
 }

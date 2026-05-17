@@ -6,6 +6,7 @@ pub mod fbi_vault;
 pub mod frus;
 pub mod govinfo;
 pub mod nara;
+pub mod noaa;
 pub mod pursue;
 
 use crate::ingest::RedirectPolicy;
