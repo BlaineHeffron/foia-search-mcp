@@ -39,10 +39,19 @@ Additional checkpoint after the redirect policy slice:
 - Added focused downloader tests for default deny with no blob/cache write,
   explicit same-host follow, max-hop enforcement, cross-host denial, relative
   redirect resolution, and unsafe redirect target rejection.
+- Redirect following remains disabled by default across the current source set;
+  no source opts in yet, so the live behavior is still default-deny.
 - Residual risk: this slice does not pin or verify the connected peer IP after
   DNS resolution, so DNS rebinding and other SSRF TOCTOU cases remain possible
   for future cross-host policies. Do not enable cross-host redirect following
   for a real source without a reviewed network-level mitigation.
+
+Additional checkpoint after the source cache-policy contract slice:
+
+- Pinned the `SourceAdapter::cache_policy()` default as
+  `RespectSourceHeaders` with focused source contract tests.
+- CIA remains explicitly `RespectSourceHeaders`, while NARA still overrides to
+  `DoNotPersist`; adding the trait default does not loosen NARA persistence.
 
 Additional checkpoint after the local `ocrmypdf` backend slice:
 
@@ -263,13 +272,13 @@ Then pick the next ingestion hardening item from the task list below.
 
 ## Next Tasks
 
-- Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
-- Add a later `tesseract` backend only if needed; the backend config now has a
-  small enum shape that can support another local OCR backend.
-- Next `Send` hardening step: evaluate the smallest safe runtime follow-up now
-  that full executor futures assert as `Send` at compile time, while preserving
-  existing cancellation/resume/idempotency semantics and avoiding unnecessary
-  worker threading complexity.
+- Add explicit redirect-follow policy only if a future source needs it; keep
+  hop validation mandatory and preserve the current default-deny posture.
+- Add a later `tesseract` backend only if a concrete source/OCR need appears;
+  the backend config already has a small enum shape for another local backend.
+- No runtime `Send` follow-up is pending from this handoff; next work should
+  begin with the read-only pass below, then choose the next hardening or
+  source-adapter slice based on that review.
 
 ## Constraints
 

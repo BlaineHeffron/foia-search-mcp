@@ -171,11 +171,16 @@ pub trait SourceAdapter: Send + Sync {
         -> SourceFuture<'a, SearchPage>;
     fn get_record<'a>(&'a self, id_or_url: &'a str) -> SourceFuture<'a, SourceRecord>;
     fn list_assets<'a>(&'a self, record: &'a SourceRecord) -> SourceFuture<'a, Vec<SourceAsset>>;
-    fn cache_policy(&self) -> CachePolicy;
+    fn cache_policy(&self) -> CachePolicy {
+        CachePolicy::RespectSourceHeaders
+    }
     fn redirect_policy(&self) -> RedirectPolicy {
         RedirectPolicy::Deny
     }
 }
+
+#[cfg(test)]
+mod cache_policy_contract_tests;
 
 #[cfg(test)]
 mod redirect_contract_tests;
