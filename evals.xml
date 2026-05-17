@@ -67,4 +67,8 @@
     <question>Find a PURSUE/war.gov UAP release-tranche record and retrieve normalized official metadata for one returned item.</question>
     <expected>Call list_sources, then search_source with source "pursue" and a release-focused query; pick a returned pursue record id or official URL and call get_source_record; report citation note, terms note, release-tranche metadata, and that image/video assets are metadata-only while PDFs are ingest-preferred.</expected>
   </eval>
+  <eval id="18">
+    <question>Find a DOJ Epstein disclosure lead, retrieve its record details, and report sensitivity plus provenance context.</question>
+    <expected>Call list_sources, then search_source with source "doj_epstein" using terms like "data set", "court records", or "foia"; call get_source_record for one returned lead id/URL; report DOJ sensitivity/privacy warning, citation/terms notes, category provenance (e.g., efta_data_set/court_record/foia/prior_doj_disclosure), and that PDFs are ingest-preferred while image/audio/video remain metadata assets.</expected>
+  </eval>
 </evals>

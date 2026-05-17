@@ -87,6 +87,12 @@ impl Config {
                 note: "PURSUE/war.gov UAP release adapter is available for tranche/record leads and official release assets; PDFs are ingest-preferred while images/videos remain metadata assets.".to_string(),
             },
             SourceStatus {
+                name: "doj_epstein".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "DOJ Epstein Library adapter is available for official DOJ disclosure leads; preserve sensitivity/privacy warnings and prefer PDF ingestion while images/audio/video remain metadata assets.".to_string(),
+            },
+            SourceStatus {
                 name: "frus".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
@@ -188,6 +194,27 @@ mod tests {
         assert_eq!(pursue.status, "available");
         assert!(pursue.note.contains("PURSUE/war.gov UAP release adapter"));
         assert!(pursue.note.contains("images/videos remain metadata assets"));
+    }
+
+    #[test]
+    fn source_status_reports_doj_epstein_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let doj_epstein = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "doj_epstein")
+            .expect("doj_epstein source should be listed");
+
+        assert_eq!(doj_epstein.status, "available");
+        assert!(doj_epstein.note.contains("DOJ Epstein Library adapter"));
+        assert!(doj_epstein.note.contains("sensitivity/privacy warnings"));
     }
 
     #[test]
