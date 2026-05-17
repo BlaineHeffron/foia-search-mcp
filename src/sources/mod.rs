@@ -176,3 +176,6 @@ pub trait SourceAdapter: Send + Sync {
         RedirectPolicy::Deny
     }
 }
+
+#[cfg(test)]
+mod redirect_contract_tests;

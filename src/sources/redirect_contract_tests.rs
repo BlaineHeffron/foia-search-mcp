@@ -1,0 +1,55 @@
+use super::{
+    cia::CiaAdapter, nara::NaraAdapter, CachePolicy, SearchOptions, SearchPage, SourceAdapter,
+    SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+};
+use crate::ingest::RedirectPolicy;
+
+struct DummyAdapter;
+
+impl SourceAdapter for DummyAdapter {
+    fn name(&self) -> &'static str {
+        "dummy"
+    }
+
+    fn status(&self) -> SourceStatus {
+        SourceStatus::Enabled
+    }
+
+    fn search<'a>(
+        &'a self,
+        _query: &'a str,
+        _options: SearchOptions,
+    ) -> SourceFuture<'a, SearchPage> {
+        Box::pin(async { Err(SourceError::invalid_input("dummy", "unused", None)) })
+    }
+
+    fn get_record<'a>(&'a self, _id_or_url: &'a str) -> SourceFuture<'a, SourceRecord> {
+        Box::pin(async { Err(SourceError::invalid_input("dummy", "unused", None)) })
+    }
+
+    fn list_assets<'a>(&'a self, _record: &'a SourceRecord) -> SourceFuture<'a, Vec<SourceAsset>> {
+        Box::pin(async { Err(SourceError::invalid_input("dummy", "unused", None)) })
+    }
+
+    fn cache_policy(&self) -> CachePolicy {
+        CachePolicy::DoNotPersist
+    }
+}
+
+#[test]
+fn source_adapter_default_redirect_policy_is_deny() {
+    let adapter = DummyAdapter;
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn cia_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = CiaAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn nara_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = NaraAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
