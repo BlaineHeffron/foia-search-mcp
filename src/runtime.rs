@@ -1,7 +1,10 @@
 use crate::config::Config;
 use crate::ingest::worker::{IngestionWorkerHandle, QueuedIngestionWorker};
 use crate::mcp::tools::FoiaSearchServer;
-use crate::sources::{cia::CiaAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, SourceAdapter};
+use crate::sources::{
+    cia::CiaAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
+    SourceAdapter,
+};
 use std::sync::Arc;
 
 pub struct FoiaSearchRuntime {
@@ -43,5 +46,6 @@ fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
             config.nara_api_key.clone(),
         )),
         Arc::new(GovInfoAdapter::default()),
+        Arc::new(PursueAdapter::from_env()),
     ]
 }

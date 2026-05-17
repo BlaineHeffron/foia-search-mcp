@@ -1,6 +1,7 @@
 pub mod cia;
 pub mod govinfo;
 pub mod nara;
+pub mod pursue;
 
 use crate::ingest::RedirectPolicy;
 use std::collections::BTreeMap;

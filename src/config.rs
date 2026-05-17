@@ -81,6 +81,12 @@ impl Config {
                 note: "GovInfo live API adapter is available for Search Service queries and package/granule summary fetches; prefer PDF/XML/MODS links.".to_string(),
             },
             SourceStatus {
+                name: "pursue".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "PURSUE/war.gov UAP release adapter is available for tranche/record leads and official release assets; PDFs are ingest-preferred while images/videos remain metadata assets.".to_string(),
+            },
+            SourceStatus {
                 name: "frus".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
@@ -161,6 +167,27 @@ mod tests {
         assert_eq!(govinfo.status, "available");
         assert!(govinfo.note.contains("live API adapter"));
         assert!(!govinfo.note.contains("manual"));
+    }
+
+    #[test]
+    fn source_status_reports_pursue_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let pursue = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "pursue")
+            .expect("pursue source should be listed");
+
+        assert_eq!(pursue.status, "available");
+        assert!(pursue.note.contains("PURSUE/war.gov UAP release adapter"));
+        assert!(pursue.note.contains("images/videos remain metadata assets"));
     }
 
     #[test]
