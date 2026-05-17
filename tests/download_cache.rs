@@ -6,7 +6,10 @@ use std::{
 };
 
 use foia_search::{
-    ingest::download::{cache_key, AssetDownloadRequest, AssetDownloader, DownloadError},
+    ingest::{
+        download::{cache_key, AssetDownloadRequest, AssetDownloader, DownloadError},
+        RedirectPolicy,
+    },
     sources::{SourceAsset, SourceAssetRole},
     store::{CachePolicy, CacheStore, ContentAddressedStore, SqliteStore},
 };
@@ -236,7 +239,7 @@ async fn redirect_response_is_not_followed_or_persisted() {
         .await
         .expect_err("redirects should not be followed implicitly");
 
-    assert!(matches!(error, DownloadError::HttpStatus { .. }));
+    assert!(matches!(error, DownloadError::RedirectDenied { .. }));
     assert!(cache
         .get(&cache_key("cia", &asset_url))
         .expect("read cache")
@@ -245,16 +248,247 @@ async fn redirect_response_is_not_followed_or_persisted() {
     assert_eq!(requests.join().expect("server requests").len(), 1);
 }
 
+#[tokio::test]
+async fn explicit_same_host_redirect_persists_final_body() {
+    let final_body = b"%PDF redirected";
+    let (asset_url, requests) = serve_sequence(vec![
+        FixtureResponse::status("HTTP/1.1 302 Found").with_header("Location", "/final.pdf"),
+        FixtureResponse::ok(final_body).with_header("Content-Type", "application/pdf"),
+    ]);
+    let store = SqliteStore::open_memory().expect("open in-memory store");
+    let cache = CacheStore::new(&store);
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(tempdir.path());
+    let downloader = AssetDownloader::new().expect("downloader");
+    let asset = pdf_asset(&asset_url);
+
+    let downloaded = downloader
+        .download(
+            &files,
+            &cache,
+            request_with_redirects(
+                "cia",
+                &asset,
+                CachePolicy::RespectSourceHeaders,
+                RedirectPolicy::same_host(2),
+                false,
+            ),
+        )
+        .await
+        .expect("same-host redirect should be followed");
+
+    assert_eq!(downloaded.status_code, 200);
+    assert_eq!(downloaded.asset_url, asset_url);
+    assert!(downloaded.final_url.ends_with("/final.pdf"));
+    assert_eq!(fs::read(&downloaded.path).expect("read blob"), final_body);
+    let provenance: serde_json::Value =
+        serde_json::from_str(&downloaded.provenance_json).expect("provenance json");
+    assert_eq!(provenance["asset_url"], asset_url);
+    assert!(provenance["final_url"]
+        .as_str()
+        .expect("final url")
+        .ends_with("/final.pdf"));
+    assert!(cache
+        .get(&cache_key("cia", &asset_url))
+        .expect("read cache")
+        .is_some());
+    let requests = requests.join().expect("server requests");
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].starts_with("GET /asset.pdf "));
+    assert!(requests[1].starts_with("GET /final.pdf "));
+}
+
+#[tokio::test]
+async fn redirect_max_hop_limit_is_enforced() {
+    let (asset_url, requests) = serve_sequence(vec![
+        FixtureResponse::status("HTTP/1.1 302 Found").with_header("Location", "/first-hop.pdf")
+    ]);
+    let store = SqliteStore::open_memory().expect("open in-memory store");
+    let cache = CacheStore::new(&store);
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(tempdir.path());
+    let downloader = AssetDownloader::new().expect("downloader");
+    let asset = pdf_asset(&asset_url);
+
+    let error = downloader
+        .download(
+            &files,
+            &cache,
+            request_with_redirects(
+                "cia",
+                &asset,
+                CachePolicy::RespectSourceHeaders,
+                RedirectPolicy::same_host(0),
+                false,
+            ),
+        )
+        .await
+        .expect_err("zero-hop policy should reject first redirect");
+
+    assert!(matches!(error, DownloadError::TooManyRedirects { .. }));
+    assert!(!tempdir.path().join("blobs").exists());
+    assert_eq!(requests.join().expect("server requests").len(), 1);
+}
+
+#[tokio::test]
+async fn cross_host_redirect_requires_explicit_policy() {
+    let (asset_url, requests) = serve_sequence(vec![FixtureResponse::status("HTTP/1.1 302 Found")
+        .with_header("Location", "http://example.test/target.pdf")]);
+    let store = SqliteStore::open_memory().expect("open in-memory store");
+    let cache = CacheStore::new(&store);
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(tempdir.path());
+    let downloader = AssetDownloader::new().expect("downloader");
+    let asset = pdf_asset(&asset_url);
+
+    let error = downloader
+        .download(
+            &files,
+            &cache,
+            request_with_redirects(
+                "cia",
+                &asset,
+                CachePolicy::RespectSourceHeaders,
+                RedirectPolicy::same_host(1),
+                false,
+            ),
+        )
+        .await
+        .expect_err("cross-host redirect should require explicit policy");
+
+    assert!(matches!(error, DownloadError::UnsafeRedirect { .. }));
+    assert!(!tempdir.path().join("blobs").exists());
+    assert_eq!(requests.join().expect("server requests").len(), 1);
+}
+
+#[tokio::test]
+async fn relative_redirect_location_is_resolved_and_validated() {
+    let final_body = b"%PDF relative";
+    let (asset_url, requests) = serve_sequence_with_path(
+        "/dir/asset.pdf",
+        vec![
+            FixtureResponse::status("HTTP/1.1 302 Found").with_header("Location", "../final.pdf"),
+            FixtureResponse::ok(final_body).with_header("Content-Type", "application/pdf"),
+        ],
+    );
+    let store = SqliteStore::open_memory().expect("open in-memory store");
+    let cache = CacheStore::new(&store);
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(tempdir.path());
+    let downloader = AssetDownloader::new().expect("downloader");
+    let asset = pdf_asset(&asset_url);
+
+    let downloaded = downloader
+        .download(
+            &files,
+            &cache,
+            request_with_redirects(
+                "cia",
+                &asset,
+                CachePolicy::RespectSourceHeaders,
+                RedirectPolicy::same_host(1),
+                false,
+            ),
+        )
+        .await
+        .expect("relative redirect should be followed");
+
+    assert_eq!(fs::read(&downloaded.path).expect("read blob"), final_body);
+    let requests = requests.join().expect("server requests");
+    assert!(requests[1].starts_with("GET /final.pdf "));
+}
+
+#[tokio::test]
+async fn redirect_without_location_is_denied_without_persisting() {
+    let (asset_url, requests) = serve_sequence(vec![FixtureResponse::status("HTTP/1.1 302 Found")]);
+    let store = SqliteStore::open_memory().expect("open in-memory store");
+    let cache = CacheStore::new(&store);
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(tempdir.path());
+    let downloader = AssetDownloader::new().expect("downloader");
+    let asset = pdf_asset(&asset_url);
+
+    let error = downloader
+        .download(
+            &files,
+            &cache,
+            request_with_redirects(
+                "cia",
+                &asset,
+                CachePolicy::RespectSourceHeaders,
+                RedirectPolicy::same_host(1),
+                false,
+            ),
+        )
+        .await
+        .expect_err("redirect without Location should fail before fetch");
+
+    assert!(matches!(error, DownloadError::RedirectDenied { .. }));
+    assert!(!tempdir.path().join("blobs").exists());
+    assert_eq!(requests.join().expect("server requests").len(), 1);
+}
+
+#[tokio::test]
+async fn unsafe_redirect_targets_are_rejected_before_fetch() {
+    for location in [
+        "ftp://example.test/asset.pdf",
+        "http://user:pass@example.test/asset.pdf",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://localhost/private.pdf",
+    ] {
+        let (asset_url, requests) =
+            serve_sequence(vec![
+                FixtureResponse::status("HTTP/1.1 302 Found").with_header("Location", location)
+            ]);
+        let store = SqliteStore::open_memory().expect("open in-memory store");
+        let cache = CacheStore::new(&store);
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let files = ContentAddressedStore::new(tempdir.path());
+        let downloader = AssetDownloader::new().expect("downloader");
+        let asset = pdf_asset(&asset_url);
+
+        let error = downloader
+            .download(
+                &files,
+                &cache,
+                request_with_redirects(
+                    "cia",
+                    &asset,
+                    CachePolicy::RespectSourceHeaders,
+                    RedirectPolicy::allow_cross_host(1),
+                    false,
+                ),
+            )
+            .await
+            .expect_err("unsafe redirect should fail before fetch");
+
+        assert!(matches!(error, DownloadError::UnsafeRedirect { .. }));
+        assert!(!tempdir.path().join("blobs").exists());
+        assert_eq!(requests.join().expect("server requests").len(), 1);
+    }
+}
+
 fn request<'a>(
     source: &'a str,
     asset: &'a SourceAsset,
     cache_policy: CachePolicy,
     force: bool,
 ) -> AssetDownloadRequest<'a> {
+    request_with_redirects(source, asset, cache_policy, RedirectPolicy::Deny, force)
+}
+
+fn request_with_redirects<'a>(
+    source: &'a str,
+    asset: &'a SourceAsset,
+    cache_policy: CachePolicy,
+    redirect_policy: RedirectPolicy,
+    force: bool,
+) -> AssetDownloadRequest<'a> {
     AssetDownloadRequest {
         source,
         asset,
         cache_policy,
+        redirect_policy,
         force,
     }
 }
@@ -271,7 +505,7 @@ fn pdf_asset(asset_url: &str) -> SourceAsset {
 #[derive(Clone)]
 struct FixtureResponse {
     status_line: &'static str,
-    headers: Vec<(&'static str, &'static str)>,
+    headers: Vec<(String, String)>,
     body: Vec<u8>,
 }
 
@@ -288,8 +522,8 @@ impl FixtureResponse {
         }
     }
 
-    fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
-        self.headers.push((name, value));
+    fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
         self
     }
 
@@ -300,6 +534,13 @@ impl FixtureResponse {
 }
 
 fn serve_sequence(responses: Vec<FixtureResponse>) -> (String, thread::JoinHandle<Vec<String>>) {
+    serve_sequence_with_path("/asset.pdf", responses)
+}
+
+fn serve_sequence_with_path(
+    path: &str,
+    responses: Vec<FixtureResponse>,
+) -> (String, thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
     let addr = listener.local_addr().expect("test server address");
     let handle = thread::spawn(move || {
@@ -319,9 +560,9 @@ fn serve_sequence(responses: Vec<FixtureResponse>) -> (String, thread::JoinHandl
                 response_head.push_str(&format!("Content-Length: {}\r\n", response.body.len()));
             }
             for (name, value) in response.headers {
-                response_head.push_str(name);
+                response_head.push_str(&name);
                 response_head.push_str(": ");
-                response_head.push_str(value);
+                response_head.push_str(&value);
                 response_head.push_str("\r\n");
             }
             response_head.push_str("\r\n");
@@ -335,7 +576,7 @@ fn serve_sequence(responses: Vec<FixtureResponse>) -> (String, thread::JoinHandl
         requests
     });
 
-    (format!("http://{addr}/asset.pdf"), handle)
+    (format!("http://{addr}{path}"), handle)
 }
 
 fn count_files(path: impl AsRef<std::path::Path>) -> usize {

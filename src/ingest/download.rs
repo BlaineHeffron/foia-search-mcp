@@ -1,11 +1,10 @@
+use crate::ingest::redirect::{send_with_redirects, RedirectFollowError, RedirectPolicy};
 use crate::sources::{SourceAsset, SourceAssetRole};
 use crate::store::files::FileStoreError;
 use crate::store::{
     BlobKind, CacheEntry, CachePolicy, CacheStore, ContentAddressedStore, StoreError,
 };
-use reqwest::header::{
-    CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED, USER_AGENT,
-};
+use reqwest::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, LAST_MODIFIED};
 use reqwest::{redirect::Policy, Client, StatusCode, Url};
 use serde::Serialize;
 use serde_json::Value;
@@ -30,6 +29,7 @@ pub struct AssetDownloadRequest<'a> {
     pub source: &'a str,
     pub asset: &'a SourceAsset,
     pub cache_policy: CachePolicy,
+    pub redirect_policy: RedirectPolicy,
     pub force: bool,
 }
 
@@ -55,6 +55,7 @@ pub struct DownloadedAsset {
     pub cache_key: String,
     pub source: String,
     pub asset_url: String,
+    pub final_url: String,
     pub mime_type: Option<String>,
     pub role: SourceAssetRole,
     pub status_code: u16,
@@ -79,6 +80,20 @@ pub enum DownloadError {
         url: String,
         status: StatusCode,
     },
+    RedirectDenied {
+        url: String,
+        location: Option<String>,
+        message: String,
+    },
+    UnsafeRedirect {
+        url: String,
+        location: String,
+        message: String,
+    },
+    TooManyRedirects {
+        url: String,
+        max_hops: usize,
+    },
     TooLarge {
         url: String,
         limit: u64,
@@ -102,6 +117,29 @@ impl fmt::Display for DownloadError {
             Self::HttpStatus { url, status } => {
                 write!(f, "asset download failed for {url}: HTTP {status}")
             }
+            Self::RedirectDenied {
+                url,
+                location,
+                message,
+            } => {
+                write!(f, "redirect denied for {url}: {message}")?;
+                if let Some(location) = location {
+                    write!(f, " Location: {location}")?;
+                }
+                Ok(())
+            }
+            Self::UnsafeRedirect {
+                url,
+                location,
+                message,
+            } => write!(
+                f,
+                "unsafe redirect rejected for {url}: {message}. Location: {location}"
+            ),
+            Self::TooManyRedirects { url, max_hops } => write!(
+                f,
+                "asset download exceeded redirect hop limit for {url}: max {max_hops}"
+            ),
             Self::TooLarge { url, limit, actual } => write!(
                 f,
                 "asset download exceeded limit for {url}: {actual} bytes > {limit} bytes"
@@ -122,6 +160,35 @@ impl std::error::Error for DownloadError {}
 impl From<reqwest::Error> for DownloadError {
     fn from(err: reqwest::Error) -> Self {
         Self::Request(err)
+    }
+}
+
+impl From<RedirectFollowError> for DownloadError {
+    fn from(err: RedirectFollowError) -> Self {
+        match err {
+            RedirectFollowError::Request(err) => Self::Request(err),
+            RedirectFollowError::Denied {
+                url,
+                location,
+                message,
+            } => Self::RedirectDenied {
+                url,
+                location,
+                message,
+            },
+            RedirectFollowError::Unsafe {
+                url,
+                location,
+                message,
+            } => Self::UnsafeRedirect {
+                url,
+                location,
+                message,
+            },
+            RedirectFollowError::TooMany { url, max_hops } => {
+                Self::TooManyRedirects { url, max_hops }
+            }
+        }
     }
 }
 
@@ -167,7 +234,7 @@ impl AssetDownloader {
         cache: &CacheStore<'_>,
         request: AssetDownloadRequest<'_>,
     ) -> DownloadResult<DownloadedAsset> {
-        validate_asset_url(&request.asset.asset_url)?;
+        let initial_url = validate_asset_url(&request.asset.asset_url)?;
         let cache_key = cache_key(request.source, &request.asset.asset_url);
         let cached = if request.cache_policy == CachePolicy::RespectSourceHeaders && !request.force
         {
@@ -176,20 +243,15 @@ impl AssetDownloader {
             None
         };
 
-        let mut builder = self
-            .client
-            .get(&request.asset.asset_url)
-            .header(USER_AGENT, USER_AGENT_VALUE);
-        if let Some(entry) = cached.as_ref() {
-            if let Some(etag) = entry.etag.as_deref() {
-                builder = builder.header(IF_NONE_MATCH, etag);
-            }
-            if let Some(last_modified) = entry.last_modified.as_deref() {
-                builder = builder.header(IF_MODIFIED_SINCE, last_modified);
-            }
-        }
-
-        let response = builder.send().await?;
+        let (response, final_url) = send_with_redirects(
+            &self.client,
+            &initial_url,
+            cached.as_ref(),
+            request.redirect_policy,
+            USER_AGENT_VALUE,
+        )
+        .await
+        .map_err(DownloadError::from)?;
         let status = response.status();
         let headers = response.headers().clone();
         let response_headers_json = headers_json(&headers)?;
@@ -213,23 +275,21 @@ impl AssetDownloader {
         }
         if !status.is_success() {
             return Err(DownloadError::HttpStatus {
-                url: request.asset.asset_url.clone(),
+                url: final_url.to_string(),
                 status,
             });
         }
         if let Some(length) = response.content_length() {
             if length > self.max_bytes {
                 return Err(DownloadError::TooLarge {
-                    url: request.asset.asset_url.clone(),
+                    url: final_url.to_string(),
                     limit: self.max_bytes,
                     actual: length,
                 });
             }
         }
 
-        let body = self
-            .read_bounded(response, &request.asset.asset_url)
-            .await?;
+        let body = self.read_bounded(response, final_url.as_str()).await?;
         let stored =
             files.put_reader(blob_kind(&request.asset.role), Cursor::new(body.as_slice()))?;
         let effective_policy = effective_cache_policy(request.cache_policy, &headers);
@@ -242,6 +302,7 @@ impl AssetDownloader {
             cache_key: &cache_key,
             source: request.source,
             asset_url: &request.asset.asset_url,
+            final_url: final_url.as_str(),
             method: "GET",
             status_code: status.as_u16(),
             cache_status: cache_status.as_str(),
@@ -274,6 +335,7 @@ impl AssetDownloader {
             cache_key,
             source: request.source.to_owned(),
             asset_url: request.asset.asset_url.clone(),
+            final_url: final_url.to_string(),
             mime_type,
             role: request.asset.role.clone(),
             status_code: status.as_u16(),
@@ -360,6 +422,7 @@ fn revalidated_asset(
         cache_key: &cache_key,
         source: request.source,
         asset_url: &request.asset.asset_url,
+        final_url: &request.asset.asset_url,
         method: "GET",
         status_code: StatusCode::NOT_MODIFIED.as_u16(),
         cache_status: DownloadCacheStatus::Revalidated.as_str(),
@@ -376,6 +439,7 @@ fn revalidated_asset(
         cache_key,
         source: request.source.to_owned(),
         asset_url: request.asset.asset_url.clone(),
+        final_url: request.asset.asset_url.clone(),
         mime_type: request.asset.mime_type.clone(),
         role: request.asset.role.clone(),
         status_code: StatusCode::NOT_MODIFIED.as_u16(),
@@ -391,13 +455,13 @@ fn revalidated_asset(
     })
 }
 
-fn validate_asset_url(url: &str) -> DownloadResult<()> {
+fn validate_asset_url(url: &str) -> DownloadResult<Url> {
     let parsed = Url::parse(url).map_err(|err| DownloadError::InvalidUrl {
         url: url.to_owned(),
         message: err.to_string(),
     })?;
     if matches!(parsed.scheme(), "http" | "https") {
-        Ok(())
+        Ok(parsed)
     } else {
         Err(DownloadError::InvalidUrl {
             url: url.to_owned(),
@@ -476,6 +540,7 @@ struct Provenance<'a> {
     cache_key: &'a str,
     source: &'a str,
     asset_url: &'a str,
+    final_url: &'a str,
     method: &'a str,
     status_code: u16,
     cache_status: &'a str,

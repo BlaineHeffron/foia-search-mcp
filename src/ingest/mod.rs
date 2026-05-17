@@ -11,6 +11,7 @@ pub mod pdf_text;
 mod pdf_text_tests;
 pub mod pdftotext;
 pub mod pipeline;
+pub mod redirect;
 pub mod source_plan;
 pub mod worker;
 
@@ -26,6 +27,7 @@ pub use pdf::{ExtractedText, TextExtraction, TextExtractor, TextFileExtractor};
 pub use pdf_text::{select_pdf_text, SelectedPdfText};
 pub use pdftotext::{PdftotextConfig, PdftotextExtractor};
 pub use pipeline::{ingest_text_file, IngestDocument, IngestError, IngestOutcome};
+pub use redirect::{RedirectFollowPolicy, RedirectPolicy};
 pub use source_plan::{
     plan_source_ingestion, PlannedSourceAsset, SourceIngestionPlan, SourcePlanError,
     SourcePlanMetadata,

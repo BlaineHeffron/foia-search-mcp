@@ -24,6 +24,24 @@ Additional checkpoint after the OCR fallback seam slice:
   no-warning/no-OCR, disabled policy, enabled OCR, OCR failure fallback, embedded
   failure rescue, and non-PDF text asset bypass coverage.
 
+Additional checkpoint after the redirect policy slice:
+
+- Added explicit ingestion redirect policy types in `src/ingest/redirect.rs`.
+  Source adapters now have a default-deny `redirect_policy()` hook, and CIA/NARA
+  still inherit deny-by-default behavior.
+- Asset downloads still build the reqwest client with `Policy::none()` and now
+  manually follow only source-declared redirects after per-hop validation.
+  Validation covers max hops, relative `Location` resolution, unsupported
+  schemes, credentialed targets, cross-host redirects unless explicitly allowed,
+  and obvious unsafe literal/metadata/local hosts on cross-host redirects.
+- Added focused downloader tests for default deny with no blob/cache write,
+  explicit same-host follow, max-hop enforcement, cross-host denial, relative
+  redirect resolution, and unsafe redirect target rejection.
+- Residual risk: this slice does not pin or verify the connected peer IP after
+  DNS resolution, so DNS rebinding and other SSRF TOCTOU cases remain possible
+  for future cross-host policies. Do not enable cross-host redirect following
+  for a real source without a reviewed network-level mitigation.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.

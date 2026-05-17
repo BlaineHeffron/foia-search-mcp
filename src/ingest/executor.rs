@@ -180,6 +180,7 @@ impl QueuedIngestionExecutor {
                         source: adapter.name(),
                         asset: &source_asset,
                         cache_policy,
+                        redirect_policy: adapter.redirect_policy(),
                         force: self.force_download,
                     },
                 )

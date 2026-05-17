@@ -1,6 +1,7 @@
 pub mod cia;
 pub mod nara;
 
+use crate::ingest::RedirectPolicy;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
@@ -171,4 +172,7 @@ pub trait SourceAdapter: Send + Sync {
     fn get_record<'a>(&'a self, id_or_url: &'a str) -> SourceFuture<'a, SourceRecord>;
     fn list_assets<'a>(&'a self, record: &'a SourceRecord) -> SourceFuture<'a, Vec<SourceAsset>>;
     fn cache_policy(&self) -> CachePolicy;
+    fn redirect_policy(&self) -> RedirectPolicy {
+        RedirectPolicy::Deny
+    }
 }
