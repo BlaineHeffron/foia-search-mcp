@@ -36,6 +36,22 @@ pub(crate) fn is_allowed_component_url(url: &str, index_url: &str) -> bool {
         return true;
     }
 
+    is_official_component_host(&host)
+}
+
+pub(crate) fn canonicalize_official_url(url: &str) -> String {
+    let Some(host) = url_host(url) else {
+        return url.to_owned();
+    };
+    let host = host.to_ascii_lowercase();
+    if url.starts_with("http://") && is_official_component_host(&host) {
+        format!("https://{}", &url["http://".len()..])
+    } else {
+        url.to_owned()
+    }
+}
+
+fn is_official_component_host(host: &str) -> bool {
     host == "justice.gov"
         || host.ends_with(".justice.gov")
         || host == "usdoj.gov"

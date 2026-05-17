@@ -14,7 +14,7 @@ use asset::{asset_priority_key, dedupe_assets};
 use parse::{
     record_from_component_page, record_matches_query, records_from_index_page, single_asset_record,
 };
-use url::is_allowed_component_url;
+use url::{canonicalize_official_url, is_allowed_component_url};
 
 pub const DOJ_FOIA_SOURCE: &str = "doj_foia";
 pub const DOJ_FOIA_SEARCH_SOURCE: &str = "doj_component_foia_index";
@@ -86,7 +86,7 @@ impl DojFoiaAdapter {
                     ),
                 ));
             }
-            return Ok(DojFoiaLocator::Url(value.to_owned()));
+            return Ok(DojFoiaLocator::Url(canonicalize_official_url(value)));
         }
 
         Ok(DojFoiaLocator::SourceId(value.to_owned()))
@@ -138,19 +138,20 @@ impl DojFoiaAdapter {
             ));
         }
 
+        let url = canonicalize_official_url(url);
         let lower = url.to_ascii_lowercase();
         if lower.ends_with(".pdf") || lower.contains(".pdf?") {
-            return Ok(single_asset_record(url, &self.index_url(), component_hint));
+            return Ok(single_asset_record(&url, &self.index_url(), component_hint));
         }
 
-        let html = fetch_text(DOJ_FOIA_SOURCE, url).await?;
-        record_from_component_page(&html, &self.index_url(), url, component_hint).ok_or_else(|| {
-            SourceError::SourceChanged {
+        let html = fetch_text(DOJ_FOIA_SOURCE, &url).await?;
+        record_from_component_page(&html, &self.index_url(), &url, component_hint).ok_or_else(
+            || SourceError::SourceChanged {
                 source: DOJ_FOIA_SOURCE,
                 message: SOURCE_CHANGED_WARNING.to_owned(),
-                url: Some(url.to_owned()),
-            }
-        })
+                url: Some(url),
+            },
+        )
     }
 
     async fn get_record_by_url(&self, url: &str) -> Result<SourceRecord, SourceError> {

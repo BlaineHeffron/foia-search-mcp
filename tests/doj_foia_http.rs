@@ -89,6 +89,26 @@ async fn search_includes_fbi_component_link_shape() {
 }
 
 #[tokio::test]
+async fn direct_legacy_http_asset_url_is_canonicalized_before_return() {
+    let adapter = DojFoiaAdapter::default();
+
+    let record = adapter
+        .get_record("http://www.justice.gov/criminal/foia/docs/annual-report.pdf")
+        .await
+        .expect("official legacy HTTP asset URL should normalize without a redirect fetch");
+
+    assert_eq!(
+        record.document_url,
+        "https://www.justice.gov/criminal/foia/docs/annual-report.pdf"
+    );
+    assert_eq!(
+        record.pdf_url.as_deref(),
+        Some("https://www.justice.gov/criminal/foia/docs/annual-report.pdf")
+    );
+    assert_eq!(record.attachments[0].asset_url, record.document_url);
+}
+
+#[tokio::test]
 async fn search_no_match_returns_warning() {
     let body = include_str!("fixtures/doj_foia/oip_components_index.html");
     let (base_url, _requests) = serve_sequence(vec![response_html(body)]);

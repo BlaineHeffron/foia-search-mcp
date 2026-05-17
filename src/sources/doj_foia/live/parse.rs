@@ -7,8 +7,8 @@ use super::classify::{
 };
 use super::html::{anchors, first_non_empty, first_tag_text};
 use super::url::{
-    absolutize, document_key, is_allowed_component_url, source_id_from_component_name,
-    source_id_from_url,
+    absolutize, canonicalize_official_url, document_key, is_allowed_component_url,
+    source_id_from_component_name, source_id_from_url,
 };
 use super::{doj_foia_citation_note, doj_foia_terms_note, DOJ_FOIA_SOURCE};
 
@@ -17,7 +17,7 @@ pub(crate) fn records_from_index_page(html: &str, index_url: &str) -> Vec<Source
 
     for (href, link_text) in anchors(html) {
         let component_name = link_text.trim();
-        let document_url = absolutize(&href, index_url);
+        let document_url = canonicalize_official_url(&absolutize(&href, index_url));
         if !is_allowed_component_url(&document_url, index_url)
             || !is_candidate_component_link(&document_url, component_name)
         {
@@ -84,7 +84,7 @@ pub(crate) fn record_from_component_page(
     let mut attachments = anchors(content)
         .into_iter()
         .filter_map(|(href, link_text)| {
-            let asset_url = absolutize(&href, record_url);
+            let asset_url = canonicalize_official_url(&absolutize(&href, record_url));
             if !is_allowed_component_url(&asset_url, index_url)
                 || !is_candidate_asset_link(&asset_url, &link_text)
             {
