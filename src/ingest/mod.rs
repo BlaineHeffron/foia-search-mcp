@@ -3,8 +3,11 @@ pub mod chunk;
 pub mod download;
 mod download_persist;
 pub mod executor;
+mod executor_async;
 #[cfg(test)]
 mod executor_cancel_tests;
+#[cfg(test)]
+mod executor_send_tests;
 #[cfg(test)]
 mod executor_tests;
 pub mod jobs;

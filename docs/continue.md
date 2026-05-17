@@ -151,6 +151,23 @@ Additional checkpoint after the source-resolution await boundary slice:
   `AfterSourceResolution` keeps durable stage/progress, leaves no partial local
   rows, and resumes idempotently on reclaim.
 
+Additional checkpoint after the executor store-boundary trial slice:
+
+- Added a focused `src/ingest/executor_async.rs` helper boundary for awaited
+  source resolution and awaited HTTP download that uses owned request structs
+  and keeps `&mut SqliteStore` out of those awaited futures.
+- `QueuedIngestionExecutor` now builds and persists cache/document/job mutations
+  in synchronous sections around those awaited helper boundaries, preserving
+  durable stage progression, cancellation checkpoints, warnings, interruption,
+  and failure semantics.
+- Added `src/ingest/executor_send_tests.rs` with compile-time `Send` assertions
+  for the new store-free awaited boundary futures, and kept
+  `src/ingest/executor_tests.rs` under the size gate by moving this coverage
+  into the new focused module.
+- Current blocker: top-level `run_next*`/`execute_claimed_job` async methods
+  still take `&mut SqliteStore`, so their futures are still not `Send` yet even
+  though the awaited network boundaries are now store-free.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -218,11 +235,11 @@ Then pick the next ingestion hardening item from the task list below.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
-- Next `Send` hardening step: sketch and trial the smallest boundary that keeps
-  `&mut SqliteStore` out of futures containing any await points (likely by
-  separating claim/stage/persist blocking sections from async network/extract
-  sections), then evaluate whether the executor future can be made `Send`
-  without changing runtime threading yet.
+- Next `Send` hardening step: remove `&mut SqliteStore` from the async executor
+  method signatures themselves (for example by introducing a claim token/phase
+  object and running awaited work in a store-free future between synchronous
+  store phases), then add a compile-time assertion for the full executor future
+  before considering any runtime threading change.
 
 ## Constraints
 

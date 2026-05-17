@@ -1,13 +1,16 @@
 use crate::ingest::{
     cancel::{ensure_not_cancelled, CancellationCheckpoint, CancellationSignal, NeverCancel},
     download::store_cache_policy,
+    executor_async::{
+        download_asset_http_for_job, resolve_source_record_for_job, DownloadHttpRequest,
+        SourceResolutionRequest,
+    },
     ocr::{NoopOcrExtractor, OcrFallbackPolicy},
     pdf_text::select_pdf_text_with_cancel,
     pipeline::ingest_extracted_text,
-    source_resolution::{plan_resolved_source_ingestion, resolve_source_record},
-    AssetDownloadRequest, AssetDownloader, ChunkOptions, DownloadError, IngestError,
-    IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtraction, TextExtractor,
-    TextFileExtractor,
+    source_resolution::plan_resolved_source_ingestion,
+    AssetDownloader, ChunkOptions, DownloadError, IngestError, IngestionJobLease,
+    IngestionJobRecord, SourcePlanError, TextExtraction, TextExtractor, TextFileExtractor,
 };
 use crate::sources::{SourceAdapter, SourceAsset, SourceAssetRole, SourceError};
 use crate::store::{
@@ -189,7 +192,11 @@ impl QueuedIngestionExecutor {
             0.10,
             Some("Resolving source record through configured adapter."),
         )?;
-        let resolved = resolve_source_record(adapter.as_ref(), id_or_url).await?;
+        let resolved = resolve_source_record_for_job(SourceResolutionRequest {
+            adapter: adapter.clone(),
+            id_or_url: id_or_url.to_owned(),
+        })
+        .await?;
         self.check_cancellation(cancellation, CancellationCheckpoint::AfterSourceResolution)?;
 
         store.mark_ingestion_job_stage(
@@ -212,21 +219,28 @@ impl QueuedIngestionExecutor {
             Some("Downloading selected asset with bounded size and explicit redirect policy."),
         )?;
         self.check_cancellation(cancellation, CancellationCheckpoint::BeforeDownload)?;
-        let request = AssetDownloadRequest {
-            source: adapter.name(),
-            asset: &source_asset,
+        let download_request = DownloadHttpRequest {
+            source: adapter.name().to_owned(),
+            asset: source_asset,
             cache_policy,
             redirect_policy: adapter.redirect_policy(),
-            force: self.force_download,
+            force_download: self.force_download,
+            cached: None,
         };
         let cached = {
             let cache = CacheStore::new(store);
-            self.downloader.load_cached_entry(&cache, &request)?
+            self.downloader
+                .load_cached_entry(&cache, &download_request.download_request())?
         };
-        let prepared = self
-            .downloader
-            .download_http(files, request, cached)
-            .await?;
+        let prepared = download_asset_http_for_job(
+            &self.downloader,
+            files,
+            DownloadHttpRequest {
+                cached,
+                ..download_request
+            },
+        )
+        .await?;
         let downloaded = {
             let cache = CacheStore::new(store);
             self.downloader
