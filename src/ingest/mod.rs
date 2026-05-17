@@ -22,6 +22,9 @@ mod pdf_text_tests;
 pub mod pdftotext;
 pub mod pipeline;
 pub(crate) mod process;
+pub mod reconcile;
+#[cfg(test)]
+mod reconcile_tests;
 pub mod redirect;
 pub mod source_plan;
 pub(crate) mod source_resolution;
