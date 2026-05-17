@@ -13,8 +13,8 @@ The Rust MCP server is now the primary implementation target. The TypeScript cod
 ## Rust MCP Tools
 
 - `list_sources`: list configured FOIA/declassified-document sources, implementation status, and caveats.
-- `search_source`: search one external source. CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, and FBI Vault are wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
-- `get_source_record`: fetch one normalized source record by source ID or canonical URL. CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, and configured NARA are wired.
+- `search_source`: search one external source. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, and FRUS are wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
 - `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
