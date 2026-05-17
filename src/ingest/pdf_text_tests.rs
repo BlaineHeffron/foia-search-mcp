@@ -63,6 +63,17 @@ impl TextExtractor for FailingExtractor {
     }
 }
 
+struct CancelledExtractor;
+
+impl TextExtractor for CancelledExtractor {
+    fn extract_pages(&self, _path: &Path) -> Result<ExtractedText, TextExtraction> {
+        Err(TextExtraction::Cancelled {
+            binary: "fixture-ocr".into(),
+            stderr: "cancelled".to_owned(),
+        })
+    }
+}
+
 #[test]
 fn embedded_pdf_text_without_warnings_does_not_try_ocr() {
     let embedded = StaticExtractor::new(extracted(&["clear embedded text"], Vec::new()));
@@ -174,6 +185,21 @@ fn ocr_failure_falls_back_to_embedded_pdf_text_and_warnings() {
     assert_eq!(selected.extracted.pages[0].text, "thin");
     assert_eq!(selected.extracted.warnings, vec!["low density"]);
     assert_eq!(ocr.calls(), 1);
+}
+
+#[test]
+fn ocr_cancellation_is_not_swallowed_as_embedded_fallback() {
+    let embedded = StaticExtractor::new(extracted(&["thin"], vec!["low density"]));
+
+    let error = select_pdf_text(
+        Path::new("fixture.pdf"),
+        &embedded,
+        &CancelledExtractor,
+        OcrFallbackPolicy::on_quality_warning(),
+    )
+    .expect_err("OCR cancellation should propagate");
+
+    assert!(matches!(error, TextExtraction::Cancelled { .. }));
 }
 
 #[test]

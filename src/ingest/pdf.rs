@@ -28,6 +28,10 @@ pub enum TextExtraction {
         timeout: Duration,
         stderr: String,
     },
+    Cancelled {
+        binary: PathBuf,
+        stderr: String,
+    },
     InvalidOutputPath {
         path: PathBuf,
         reason: String,
@@ -63,6 +67,11 @@ impl fmt::Display for TextExtraction {
                 timeout.as_secs_f32(),
                 binary.display()
             ),
+            Self::Cancelled { binary, stderr } => write!(
+                f,
+                "text extraction command was cancelled: {}: {stderr}",
+                binary.display()
+            ),
             Self::InvalidOutputPath { path, reason } => {
                 write!(
                     f,
@@ -84,6 +93,14 @@ impl From<std::io::Error> for TextExtraction {
 
 pub trait TextExtractor {
     fn extract_pages(&self, path: &Path) -> Result<ExtractedText, TextExtraction>;
+
+    fn extract_pages_with_cancel(
+        &self,
+        path: &Path,
+        _is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<ExtractedText, TextExtraction> {
+        self.extract_pages(path)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

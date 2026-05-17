@@ -1,30 +1,21 @@
 use crate::ingest::pdf::{
     extracted_text_from_form_feed, ExtractedText, TextExtraction, TextExtractor,
 };
+use crate::ingest::process::{wait_for_child_with_controls, ChildWaitOutcome};
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(unix)]
-use std::os::raw::c_int;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-#[cfg(unix)]
-const SIGKILL: c_int = 9;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_MAX_STDERR_BYTES: usize = 8 * 1024;
-const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const OUTPUT_FILENAME: &str = "extracted.txt";
 const STDERR_FILENAME: &str = "stderr.txt";
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn kill(pid: c_int, sig: c_int) -> c_int;
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PdftotextConfig {
@@ -85,12 +76,24 @@ impl Default for PdftotextExtractor {
 
 impl TextExtractor for PdftotextExtractor {
     fn extract_pages(&self, path: &Path) -> Result<ExtractedText, TextExtraction> {
-        self.extract_pdf_text(path)
+        self.extract_pdf_text(path, &|| false)
+    }
+
+    fn extract_pages_with_cancel(
+        &self,
+        path: &Path,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<ExtractedText, TextExtraction> {
+        self.extract_pdf_text(path, is_cancelled)
     }
 }
 
 impl PdftotextExtractor {
-    fn extract_pdf_text(&self, input_path: &Path) -> Result<ExtractedText, TextExtraction> {
+    fn extract_pdf_text(
+        &self,
+        input_path: &Path,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<ExtractedText, TextExtraction> {
         let temp_dir = ExtractionTempDir::create()?;
         let output_path = temp_dir.path().join(OUTPUT_FILENAME);
         let stderr_path = temp_dir.path().join(STDERR_FILENAME);
@@ -115,14 +118,9 @@ impl PdftotextExtractor {
 
         let status = match command.spawn() {
             Ok(mut child) => {
-                let deadline = Instant::now() + self.config.timeout;
-                loop {
-                    if let Some(status) = child.try_wait()? {
-                        break status;
-                    }
-                    if Instant::now() >= deadline {
-                        kill_child_process_tree(&mut child);
-                        let _ = child.wait();
+                match wait_for_child_with_controls(&mut child, self.config.timeout, is_cancelled)? {
+                    ChildWaitOutcome::Completed(status) => status,
+                    ChildWaitOutcome::TimedOut => {
                         return Err(TextExtraction::Timeout {
                             binary: self.config.binary.clone(),
                             timeout: self.config.timeout,
@@ -132,7 +130,15 @@ impl PdftotextExtractor {
                             )?,
                         });
                     }
-                    std::thread::sleep(WAIT_POLL_INTERVAL);
+                    ChildWaitOutcome::Cancelled => {
+                        return Err(TextExtraction::Cancelled {
+                            binary: self.config.binary.clone(),
+                            stderr: read_bounded_file(
+                                &mut stderr_file,
+                                self.config.max_stderr_bytes,
+                            )?,
+                        });
+                    }
                 }
             }
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -154,23 +160,6 @@ impl PdftotextExtractor {
         let text = fs::read_to_string(&output_path)?;
         extracted_text_from_form_feed(&text)
     }
-}
-
-fn kill_child_process_tree(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        if let Ok(pid) = c_int::try_from(child.id()) {
-            // SAFETY: the child was started in its own process group with
-            // process_group(0), so sending SIGKILL to -pid targets only that
-            // extraction process group. On failure, fall back to Child::kill.
-            let killed_group = unsafe { kill(-pid, SIGKILL) } == 0;
-            if killed_group {
-                return;
-            }
-        }
-    }
-
-    let _ = child.kill();
 }
 
 struct ExtractionTempDir {
@@ -382,6 +371,32 @@ sleep 5
         assert!(matches!(
             error,
             TextExtraction::Timeout { binary: err_binary, .. } if err_binary == binary
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancellation_kills_process_and_returns_cancelled_error() {
+        let tempdir = tempfile::tempdir().expect("create tempdir");
+        let binary = write_executable(
+            tempdir.path(),
+            "fake-pdftotext",
+            r#"#!/bin/sh
+printf 'started' >&2
+sleep 5
+"#,
+        );
+        let mut config = PdftotextConfig::new(binary.clone());
+        config.timeout = Duration::from_secs(1);
+        let extractor = PdftotextExtractor::new(config);
+
+        let error = extractor
+            .extract_pages_with_cancel(&input_pdf(tempdir.path()), &|| true)
+            .expect_err("cancellation should fail");
+
+        assert!(matches!(
+            error,
+            TextExtraction::Cancelled { binary: err_binary, .. } if err_binary == binary
         ));
     }
 

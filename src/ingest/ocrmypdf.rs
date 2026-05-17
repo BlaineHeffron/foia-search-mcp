@@ -1,28 +1,18 @@
 use crate::ingest::pdf::{ExtractedText, TextExtraction, TextExtractor};
+use crate::ingest::process::{wait_for_child_with_controls, ChildWaitOutcome};
 use crate::ingest::{PdftotextConfig, PdftotextExtractor};
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-#[cfg(unix)]
-use std::os::raw::c_int;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(unix)]
-const SIGKILL: c_int = 9;
-const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const OCR_OUTPUT_FILENAME: &str = "ocr-output.pdf";
 const STDERR_FILENAME: &str = "stderr.txt";
 const PDF_HEADER_PREFIX: &[u8] = b"%PDF-";
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn kill(pid: c_int, sig: c_int) -> c_int;
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OcrmypdfConfig {
@@ -77,6 +67,14 @@ impl OcrmypdfExtractor {
 
 impl TextExtractor for OcrmypdfExtractor {
     fn extract_pages(&self, path: &Path) -> Result<ExtractedText, TextExtraction> {
+        self.extract_pages_with_cancel(path, &|| false)
+    }
+
+    fn extract_pages_with_cancel(
+        &self,
+        path: &Path,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<ExtractedText, TextExtraction> {
         let temp_dir = OcrTempDir::create()?;
         let output_path = temp_dir.path().join(OCR_OUTPUT_FILENAME);
         let stderr_path = temp_dir.path().join(STDERR_FILENAME);
@@ -100,7 +98,30 @@ impl TextExtractor for OcrmypdfExtractor {
         command.process_group(0);
 
         let status = match command.spawn() {
-            Ok(mut child) => wait_for_child(&mut child, &mut stderr_file, &self.config)?,
+            Ok(mut child) => {
+                match wait_for_child_with_controls(&mut child, self.config.timeout, is_cancelled)? {
+                    ChildWaitOutcome::Completed(status) => status,
+                    ChildWaitOutcome::TimedOut => {
+                        return Err(TextExtraction::Timeout {
+                            binary: self.config.binary.clone(),
+                            timeout: self.config.timeout,
+                            stderr: read_bounded_file(
+                                &mut stderr_file,
+                                self.config.max_stderr_bytes,
+                            )?,
+                        });
+                    }
+                    ChildWaitOutcome::Cancelled => {
+                        return Err(TextExtraction::Cancelled {
+                            binary: self.config.binary.clone(),
+                            stderr: read_bounded_file(
+                                &mut stderr_file,
+                                self.config.max_stderr_bytes,
+                            )?,
+                        });
+                    }
+                }
+            }
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
                 return Err(TextExtraction::UnavailableBinary {
                     binary: self.config.binary.clone(),
@@ -118,30 +139,8 @@ impl TextExtractor for OcrmypdfExtractor {
         }
 
         validate_pdf_output(&output_path)?;
-        PdftotextExtractor::new(self.config.pdftotext.clone()).extract_pages(&output_path)
-    }
-}
-
-fn wait_for_child(
-    child: &mut Child,
-    stderr_file: &mut File,
-    config: &OcrmypdfConfig,
-) -> Result<std::process::ExitStatus, TextExtraction> {
-    let deadline = Instant::now() + config.timeout;
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status);
-        }
-        if Instant::now() >= deadline {
-            kill_child_process_tree(child);
-            let _ = child.wait();
-            return Err(TextExtraction::Timeout {
-                binary: config.binary.clone(),
-                timeout: config.timeout,
-                stderr: read_bounded_file(stderr_file, config.max_stderr_bytes)?,
-            });
-        }
-        std::thread::sleep(WAIT_POLL_INTERVAL);
+        PdftotextExtractor::new(self.config.pdftotext.clone())
+            .extract_pages_with_cancel(&output_path, is_cancelled)
     }
 }
 
@@ -161,22 +160,6 @@ fn validate_pdf_output(path: &Path) -> Result<(), TextExtraction> {
     }
 
     Ok(())
-}
-
-fn kill_child_process_tree(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        if let Ok(pid) = c_int::try_from(child.id()) {
-            // SAFETY: the child was started in its own process group with
-            // process_group(0), so SIGKILL to -pid is scoped to this command.
-            let killed_group = unsafe { kill(-pid, SIGKILL) } == 0;
-            if killed_group {
-                return;
-            }
-        }
-    }
-
-    let _ = child.kill();
 }
 
 struct OcrTempDir {

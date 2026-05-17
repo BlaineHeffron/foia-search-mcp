@@ -18,13 +18,26 @@ pub fn select_pdf_text(
     ocr_extractor: &dyn TextExtractor,
     policy: OcrFallbackPolicy,
 ) -> Result<SelectedPdfText, TextExtraction> {
-    match embedded_extractor.extract_pages(path) {
-        Ok(embedded) => select_after_embedded_success(path, embedded, ocr_extractor, policy),
+    select_pdf_text_with_cancel(path, embedded_extractor, ocr_extractor, policy, &|| false)
+}
+
+pub fn select_pdf_text_with_cancel(
+    path: &Path,
+    embedded_extractor: &dyn TextExtractor,
+    ocr_extractor: &dyn TextExtractor,
+    policy: OcrFallbackPolicy,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<SelectedPdfText, TextExtraction> {
+    match embedded_extractor.extract_pages_with_cancel(path, is_cancelled) {
+        Ok(embedded) => {
+            select_after_embedded_success(path, embedded, ocr_extractor, policy, is_cancelled)
+        }
+        Err(cancelled @ TextExtraction::Cancelled { .. }) => Err(cancelled),
         Err(embedded_error) => {
             if !policy.is_enabled() {
                 return Err(embedded_error);
             }
-            match ocr_extractor.extract_pages(path) {
+            match ocr_extractor.extract_pages_with_cancel(path, is_cancelled) {
                 Ok(mut ocr) => {
                     ocr.warnings
                         .insert(0, OCR_FALLBACK_RESCUED_WARNING.to_owned());
@@ -33,6 +46,7 @@ pub fn select_pdf_text(
                         text_source: TextSource::LocalOcr,
                     })
                 }
+                Err(cancelled @ TextExtraction::Cancelled { .. }) => Err(cancelled),
                 Err(_) => Err(embedded_error),
             }
         }
@@ -44,6 +58,7 @@ fn select_after_embedded_success(
     embedded: ExtractedText,
     ocr_extractor: &dyn TextExtractor,
     policy: OcrFallbackPolicy,
+    is_cancelled: &dyn Fn() -> bool,
 ) -> Result<SelectedPdfText, TextExtraction> {
     if embedded.warnings.is_empty() || !policy.is_enabled() {
         return Ok(SelectedPdfText {
@@ -52,7 +67,7 @@ fn select_after_embedded_success(
         });
     }
 
-    match ocr_extractor.extract_pages(path) {
+    match ocr_extractor.extract_pages_with_cancel(path, is_cancelled) {
         Ok(mut ocr) if compatible_page_boundaries(&embedded, &ocr) => {
             let mut warnings = embedded.warnings.clone();
             warnings.push(OCR_FALLBACK_USED_WARNING.to_owned());
@@ -73,6 +88,7 @@ fn select_after_embedded_success(
                 text_source: TextSource::EmbeddedPdfText,
             })
         }
+        Err(cancelled @ TextExtraction::Cancelled { .. }) => Err(cancelled),
         Err(_) => Ok(SelectedPdfText {
             extracted: embedded,
             text_source: TextSource::EmbeddedPdfText,

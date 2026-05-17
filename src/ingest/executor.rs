@@ -1,11 +1,13 @@
 use crate::ingest::{
+    cancel::{ensure_not_cancelled, CancellationCheckpoint, CancellationSignal, NeverCancel},
     download::store_cache_policy,
     ocr::{NoopOcrExtractor, OcrFallbackPolicy},
-    pdf_text::select_pdf_text,
-    pipeline::{ingest_extracted_text, ingest_text_file},
+    pdf_text::select_pdf_text_with_cancel,
+    pipeline::ingest_extracted_text,
     source_plan::plan_source_ingestion,
     AssetDownloadRequest, AssetDownloader, ChunkOptions, DownloadError, IngestError,
-    IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtractor,
+    IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtraction, TextExtractor,
+    TextFileExtractor,
 };
 use crate::sources::{SourceAdapter, SourceAsset, SourceAssetRole, SourceError};
 use crate::store::{
@@ -44,6 +46,7 @@ pub enum ExecutorError {
     Download(DownloadError),
     Ingest(IngestError),
     AssetSizeOverflow { size_bytes: u64 },
+    Cancelled { checkpoint: CancellationCheckpoint },
 }
 
 impl QueuedIngestionExecutor {
@@ -99,18 +102,54 @@ impl QueuedIngestionExecutor {
         pdf_extractor: &dyn TextExtractor,
         ocr_extractor: &dyn TextExtractor,
     ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
+        self.run_next_with_ocr_and_cancel(store, files, pdf_extractor, ocr_extractor, &NeverCancel)
+            .await
+    }
+
+    pub async fn run_next_with_ocr_and_cancel(
+        &self,
+        store: &mut SqliteStore,
+        files: &ContentAddressedStore,
+        pdf_extractor: &dyn TextExtractor,
+        ocr_extractor: &dyn TextExtractor,
+        cancellation: &dyn CancellationSignal,
+    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
         let lease = self.lease(store)?;
         let Some(job) = store.claim_next_ingestion_job(&lease)? else {
             return Ok(None);
         };
 
-        match self
-            .execute_claimed_job(store, files, pdf_extractor, ocr_extractor, &job)
-            .await
+        let result = match self.check_cancellation(cancellation, CancellationCheckpoint::AfterClaim)
         {
+            Ok(()) => {
+                self.execute_claimed_job(
+                    store,
+                    files,
+                    pdf_extractor,
+                    ocr_extractor,
+                    cancellation,
+                    &job,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+
+        match result {
             Ok(outcome) => {
                 store.complete_ingestion_job(&job.job_key, &self.owner)?;
                 Ok(Some(outcome))
+            }
+            Err(ExecutorError::Cancelled { checkpoint }) => {
+                let _ = store.interrupt_ingestion_job(
+                    &job.job_key,
+                    &self.owner,
+                    Some(&format!(
+                        "ingestion interrupted by cancellation {checkpoint}"
+                    )),
+                    Some(checkpoint.next_action()),
+                );
+                Err(ExecutorError::Cancelled { checkpoint })
             }
             Err(error) => {
                 let message = error.to_string();
@@ -131,6 +170,7 @@ impl QueuedIngestionExecutor {
         files: &ContentAddressedStore,
         pdf_extractor: &dyn TextExtractor,
         ocr_extractor: &dyn TextExtractor,
+        cancellation: &dyn CancellationSignal,
         job: &IngestionJobRecord,
     ) -> Result<ExecutorJobOutcome, ExecutorError> {
         let adapter = self.source_adapter(&job.source)?;
@@ -151,6 +191,7 @@ impl QueuedIngestionExecutor {
         )?;
         let mut record = adapter.get_record(id_or_url).await?;
         record.attachments = adapter.list_assets(&record).await?;
+        self.check_cancellation(cancellation, CancellationCheckpoint::AfterSourceResolution)?;
 
         store.mark_ingestion_job_stage(
             &job.job_key,
@@ -160,6 +201,7 @@ impl QueuedIngestionExecutor {
             Some("Selecting ingestible asset and building normalized document plan."),
         )?;
         let plan = plan_source_ingestion(&record, adapter.cache_policy())?;
+        self.check_cancellation(cancellation, CancellationCheckpoint::AfterPlanning)?;
         let source_asset = planned_asset_to_source_asset(&plan.asset);
         let cache_policy = store_cache_policy(plan.cache_policy.clone());
 
@@ -170,6 +212,7 @@ impl QueuedIngestionExecutor {
             0.35,
             Some("Downloading selected asset with bounded size and explicit redirect policy."),
         )?;
+        self.check_cancellation(cancellation, CancellationCheckpoint::BeforeDownload)?;
         let downloaded = {
             let cache = CacheStore::new(store);
             self.downloader
@@ -186,6 +229,7 @@ impl QueuedIngestionExecutor {
                 )
                 .await?
         };
+        self.check_cancellation(cancellation, CancellationCheckpoint::AfterDownload)?;
 
         store.mark_ingestion_job_stage(
             &job.job_key,
@@ -194,14 +238,29 @@ impl QueuedIngestionExecutor {
             0.60,
             Some("Extracting page text and building chunks."),
         )?;
+        self.check_cancellation(cancellation, CancellationCheckpoint::BeforeExtraction)?;
         let outcome = if plan.asset.role == SourceAssetRole::Pdf {
-            let selected = select_pdf_text(
+            let selected = select_pdf_text_with_cancel(
                 &downloaded.path,
                 pdf_extractor,
                 ocr_extractor,
                 self.ocr_policy,
+                &|| cancellation.is_cancelled(),
             )
-            .map_err(IngestError::from)?;
+            .map_err(|error| match error {
+                TextExtraction::Cancelled { .. } => ExecutorError::Cancelled {
+                    checkpoint: CancellationCheckpoint::DuringExtraction,
+                },
+                error => ExecutorError::Ingest(IngestError::from(error)),
+            })?;
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "persisting_document",
+                0.80,
+                Some("Persisting normalized document, pages, chunks, and local index rows."),
+            )?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
             ingest_extracted_text(
                 store,
                 plan.document,
@@ -210,7 +269,18 @@ impl QueuedIngestionExecutor {
                 Some(selected.text_source),
             )?
         } else {
-            ingest_text_file(store, &downloaded.path, plan.document, &self.chunk_options)?
+            let extracted = TextFileExtractor
+                .extract_pages(&downloaded.path)
+                .map_err(IngestError::from)?;
+            store.mark_ingestion_job_stage(
+                &job.job_key,
+                &self.owner,
+                "persisting_document",
+                0.80,
+                Some("Persisting normalized document, pages, chunks, and local index rows."),
+            )?;
+            self.check_cancellation(cancellation, CancellationCheckpoint::BeforePersistence)?;
+            ingest_extracted_text(store, plan.document, &self.chunk_options, extracted, None)?
         };
 
         for warning in &outcome.warnings {
@@ -224,6 +294,10 @@ impl QueuedIngestionExecutor {
             "persisting_asset",
             0.90,
             Some("Persisting asset provenance after successful document/page/chunk upsert."),
+        )?;
+        self.check_cancellation(
+            cancellation,
+            CancellationCheckpoint::BeforeAssetProvenanceWrite,
         )?;
         store.add_asset(&AssetInput {
             document_key: outcome.document_key.clone(),
@@ -245,6 +319,15 @@ impl QueuedIngestionExecutor {
             chunk_count: outcome.chunk_count,
             warnings: outcome.warnings,
         })
+    }
+
+    fn check_cancellation(
+        &self,
+        cancellation: &dyn CancellationSignal,
+        checkpoint: CancellationCheckpoint,
+    ) -> Result<(), ExecutorError> {
+        ensure_not_cancelled(cancellation, checkpoint)
+            .map_err(|checkpoint| ExecutorError::Cancelled { checkpoint })
     }
 
     fn source_adapter(&self, source: &str) -> Result<Arc<dyn SourceAdapter>, ExecutorError> {
@@ -289,6 +372,9 @@ impl fmt::Display for ExecutorError {
                     f,
                     "downloaded asset size does not fit SQLite integer: {size_bytes}"
                 )
+            }
+            Self::Cancelled { checkpoint } => {
+                write!(f, "ingestion cancelled {checkpoint}")
             }
         }
     }

@@ -166,3 +166,28 @@ sleep 5
         TextExtraction::Timeout { binary, .. } if binary == ocrmypdf
     ));
 }
+
+#[cfg(unix)]
+#[test]
+fn ocrmypdf_cancellation_kills_process() {
+    let tempdir = tempfile::tempdir().expect("create tempdir");
+    let ocrmypdf = write_executable(
+        tempdir.path(),
+        "fake-ocrmypdf",
+        r#"#!/bin/sh
+printf 'started' >&2
+sleep 5
+"#,
+    );
+    let config = OcrmypdfConfig::new(ocrmypdf.clone(), Duration::from_secs(1), 1024);
+    let extractor = OcrmypdfExtractor::new(config);
+
+    let error = extractor
+        .extract_pages_with_cancel(&input_pdf(tempdir.path()), &|| true)
+        .expect_err("cancellation should fail");
+
+    assert!(matches!(
+        error,
+        TextExtraction::Cancelled { binary, .. } if binary == ocrmypdf
+    ));
+}

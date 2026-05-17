@@ -1,6 +1,9 @@
+pub mod cancel;
 pub mod chunk;
 pub mod download;
 pub mod executor;
+#[cfg(test)]
+mod executor_cancel_tests;
 #[cfg(test)]
 mod executor_tests;
 pub mod jobs;
@@ -14,10 +17,18 @@ pub mod pdf_text;
 mod pdf_text_tests;
 pub mod pdftotext;
 pub mod pipeline;
+pub(crate) mod process;
 pub mod redirect;
 pub mod source_plan;
 pub mod worker;
+#[cfg(test)]
+mod worker_cancel_tests;
+pub(crate) mod worker_ocr;
 
+pub use cancel::{
+    ensure_not_cancelled, CancellationCheckpoint, CancellationHandle, CancellationSignal,
+    CancellationToken, NeverCancel,
+};
 pub use chunk::{chunk_pages, Chunk, ChunkOptions, PageText};
 pub use download::{
     store_cache_policy, AssetDownloadRequest, AssetDownloader, DownloadCacheStatus, DownloadError,

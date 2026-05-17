@@ -102,6 +102,25 @@ Additional checkpoint after the OCR mismatch warning slice:
   durable ingestion job warnings, with focused selector and executor-path tests
   in `src/ingest/pdf_text_tests.rs`.
 
+Additional checkpoint after the mid-job cancellation slice:
+
+- Added explicit cancellation tokens/checkpoints for queued ingestion execution.
+  Worker shutdown requests cancellation before joining the worker thread, and
+  claimed active jobs transition to `interrupted` with resume-oriented
+  `next_action` text instead of staying `running` or becoming terminal failures.
+- Executor cancellation checkpoints now cover claim, source resolution,
+  planning, download boundaries, extraction start, extraction cancellation,
+  document persistence, and final asset provenance writes. Cancellations before
+  persistence leave no local rows; cancellations after document persistence keep
+  document/page/chunk rows resumable and omit final asset provenance until a
+  later reclaim completes the job.
+- External `pdftotext` and `ocrmypdf` execution now share a cancellable child
+  wait helper. Cancellation kills the child process group on Unix, returns a
+  distinct `TextExtraction::Cancelled`, and preserves existing timeout behavior.
+  Tests use fake local binaries and loopback HTTP fixtures only.
+- The worker OCR adapter moved to `src/ingest/worker_ocr.rs` so cancellation
+  propagation does not grow the near-limit `src/ingest/worker.rs` hotspot.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -110,6 +129,10 @@ Current ingestion slices now include:
 - External `pdftotext` extraction with structured command arguments, timeout handling, bounded stderr capture, temp output validation, and text-quality warnings.
 - `QueuedIngestionExecutor` claims durable jobs, resolves source records, plans ingestion, downloads selected assets, extracts text, persists pages/chunks, links assets, and records terminal job state.
 - A single background ingestion worker is started by the Rust runtime. It opens a fresh SQLite handle per iteration, advances one queued job at a time, polls at a bounded interval when idle, and stops cleanly between iterations when the MCP service exits.
+- Mid-job cancellation and shutdown interruption for queued ingestion. Active
+  work is persisted as interrupted/resumable at safe boundaries, and cancellable
+  local PDF/OCR child processes are killed without requiring live CIA/NARA HTTP
+  or installed `pdftotext`/`ocrmypdf` tools in tests.
 
 Review fixes already included:
 
@@ -147,13 +170,14 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 Start with a read-only pass over these modules:
 
 - `src/ingest/worker.rs`
+- `src/ingest/worker_ocr.rs`
 - `src/ingest/executor.rs`
+- `src/ingest/cancel.rs`
+- `src/ingest/process.rs`
 - `src/runtime.rs`
 - `src/mcp/tools.rs`
 
-Then prioritize mid-job cancellation/interruption behavior so shutdown can mark
-in-flight work resumable immediately instead of waiting for the active executor
-iteration to finish.
+Then pick the next ingestion hardening item from the task list below.
 
 ## Next Tasks
 
@@ -161,7 +185,6 @@ iteration to finish.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
-- Add mid-job cancellation/interruption. Current shutdown waits for the active executor iteration to finish; it does not mark an in-flight job interrupted immediately when the MCP process is asked to stop.
 
 ## Constraints
 
