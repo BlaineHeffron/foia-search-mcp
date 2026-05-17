@@ -1,3 +1,4 @@
+pub mod aaro;
 pub mod cia;
 pub mod doj_epstein;
 pub mod doj_foia;

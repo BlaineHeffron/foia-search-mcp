@@ -1,5 +1,5 @@
 use super::{
-    cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
+    aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
     fbi_vault::FbiVaultAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture,
     SourceRecord, SourceStatus,
@@ -41,6 +41,12 @@ impl SourceAdapter for DummyAdapter {
 #[test]
 fn source_adapter_default_redirect_policy_is_deny() {
     let adapter = DummyAdapter;
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn aaro_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = AaroAdapter::default();
     assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
 }
 

@@ -1,5 +1,5 @@
 use super::{
-    cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
+    aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
     fbi_vault::FbiVaultAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture,
     SourceRecord, SourceStatus,
@@ -36,6 +36,12 @@ impl SourceAdapter for DummyAdapter {
 #[test]
 fn source_adapter_default_cache_policy_is_respect_source_headers() {
     let adapter = DummyAdapter;
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn aaro_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = AaroAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }
 

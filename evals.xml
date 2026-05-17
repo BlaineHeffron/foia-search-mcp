@@ -79,4 +79,8 @@
     <question>Find an FBI Vault multipart file lead, fetch the record, and report citation plus part-order metadata for safe sourcing.</question>
     <expected>Call list_sources, then search_source with source "fbi_vault"; call get_source_record for one returned fbi_vault slug/URL; report official Vault page/PDF URL, citation/terms notes, and multipart metadata (collection_name, vault_slug/path, part_number or part_count, asset_count/pdf_asset_count) with a warning to verify part ordering and page boundaries before publication.</expected>
   </eval>
+  <eval id="21">
+    <question>Find an official AARO UAP historical-record lead for KONA BLUE, fetch the normalized record, and summarize provenance.</question>
+    <expected>Call list_sources, then search_source with source "aaro" and query terms like "KONA BLUE" or "UAP records"; call get_source_record for a returned aaro id/URL; report citation/terms notes, originating agency and release/review metadata, official AARO page/PDF URL, and that PDFs are ingest-preferred while image/video links remain metadata assets.</expected>
+  </eval>
 </evals>

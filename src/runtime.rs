@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::ingest::worker::{IngestionWorkerHandle, QueuedIngestionWorker};
 use crate::mcp::tools::FoiaSearchServer;
 use crate::sources::{
-    cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
+    aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
     fbi_vault::FbiVaultAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
     SourceAdapter,
 };
@@ -41,6 +41,7 @@ impl FoiaSearchRuntime {
 
 fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
     vec![
+        Arc::new(AaroAdapter::from_env()),
         Arc::new(CiaAdapter::from_env()),
         Arc::new(NaraAdapter::new(
             config.nara_api_base_url.clone(),

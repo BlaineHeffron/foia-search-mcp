@@ -3,6 +3,7 @@ use rmcp::ErrorData as McpError;
 use crate::errors::FoiaSearchError;
 
 pub(crate) const VALID_SOURCES: &[&str] = &[
+    "aaro",
     "cia",
     "nara",
     "govinfo",
@@ -30,6 +31,10 @@ pub(crate) fn validate_source_name(source: &str) -> Result<(), McpError> {
 
 pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<String> {
     match adapter_name {
+        "aaro" => Some(
+            "AARO adapter is wired for official aaro.mil UAP records and case-resolution leads; preserve agency/release metadata and prefer PDF assets while treating media links as metadata assets."
+                .to_owned(),
+        ),
         "cia" => Some("CIA Reading Room adapter is wired for HTTP search and record fetch.".to_owned()),
         "nara" if enabled => Some(
             "NARA Catalog adapter is wired for API-key HTTP search and record fetch; persistent API response caching is disabled by policy."
