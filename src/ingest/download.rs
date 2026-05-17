@@ -1,12 +1,15 @@
+use crate::ingest::download_persist::{
+    build_fetched_download, build_revalidated_download, load_cached_entry, persist_download,
+    PendingCachePersist,
+};
 use crate::ingest::redirect::{send_with_redirects, RedirectFollowError, RedirectPolicy};
 use crate::sources::{SourceAsset, SourceAssetRole};
 use crate::store::files::FileStoreError;
 use crate::store::{
     BlobKind, CacheEntry, CachePolicy, CacheStore, ContentAddressedStore, StoreError,
 };
-use reqwest::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, LAST_MODIFIED};
+use reqwest::header::{CONTENT_TYPE, ETAG, LAST_MODIFIED};
 use reqwest::{redirect::Policy, Client, StatusCode, Url};
-use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -41,7 +44,7 @@ pub enum DownloadCacheStatus {
 }
 
 impl DownloadCacheStatus {
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Fetched => "fetched",
             Self::Revalidated => "revalidated",
@@ -234,15 +237,28 @@ impl AssetDownloader {
         cache: &CacheStore<'_>,
         request: AssetDownloadRequest<'_>,
     ) -> DownloadResult<DownloadedAsset> {
+        let cached = self.load_cached_entry(cache, &request)?;
+        let prepared = self.download_http(files, request, cached).await?;
+        self.persist_prepared_download(cache, prepared)
+    }
+
+    pub(crate) fn load_cached_entry(
+        &self,
+        cache: &CacheStore<'_>,
+        request: &AssetDownloadRequest<'_>,
+    ) -> DownloadResult<Option<CacheEntry>> {
+        let key = cache_key(request.source, &request.asset.asset_url);
+        load_cached_entry(cache, request, &key)
+    }
+
+    pub(crate) async fn download_http(
+        &self,
+        files: &ContentAddressedStore,
+        request: AssetDownloadRequest<'_>,
+        cached: Option<CacheEntry>,
+    ) -> DownloadResult<PendingCachePersist> {
         let initial_url = validate_asset_url(&request.asset.asset_url)?;
         let cache_key = cache_key(request.source, &request.asset.asset_url);
-        let cached = if request.cache_policy == CachePolicy::RespectSourceHeaders && !request.force
-        {
-            cache.get(&cache_key)?
-        } else {
-            None
-        };
-
         let (response, final_url) = send_with_redirects(
             &self.client,
             &initial_url,
@@ -264,8 +280,8 @@ impl AssetDownloader {
             .or_else(|| header_string(&headers, CONTENT_TYPE));
 
         if status == StatusCode::NOT_MODIFIED {
-            return revalidated_asset(
-                request,
+            return build_revalidated_download(
+                &request,
                 cached,
                 cache_key,
                 response_headers_json,
@@ -292,63 +308,26 @@ impl AssetDownloader {
         let body = self.read_bounded(response, final_url.as_str()).await?;
         let stored =
             files.put_reader(blob_kind(&request.asset.role), Cursor::new(body.as_slice()))?;
-        let effective_policy = effective_cache_policy(request.cache_policy, &headers);
-        let cache_status = if effective_policy == CachePolicy::DoNotPersist {
-            DownloadCacheStatus::NotPersisted
-        } else {
-            DownloadCacheStatus::Fetched
-        };
-        let provenance_json = provenance_json(&Provenance {
-            cache_key: &cache_key,
-            source: request.source,
-            asset_url: &request.asset.asset_url,
-            final_url: final_url.as_str(),
-            method: "GET",
-            status_code: status.as_u16(),
-            cache_status: cache_status.as_str(),
-            cache_policy: cache_policy_str(effective_policy),
-            sha256: &stored.sha256,
-            size_bytes: stored.size_bytes,
-            body_path: Some(stored.path.to_string_lossy().as_ref()),
-            etag: etag.as_deref(),
-            last_modified: last_modified.as_deref(),
-            response_headers_json: &response_headers_json,
-        })?;
-
-        cache.put(&CacheEntry {
-            cache_key: cache_key.clone(),
-            source: request.source.to_owned(),
-            url: request.asset.asset_url.clone(),
-            method: "GET".to_owned(),
-            status_code: Some(i64::from(status.as_u16())),
-            response_headers_json: response_headers_json.clone(),
-            body_sha256: Some(stored.sha256.clone()),
-            body_path: Some(stored.path.to_string_lossy().into_owned()),
-            etag: etag.clone(),
-            last_modified: last_modified.clone(),
-            expires_at: None,
-            cache_policy: effective_policy,
-            provenance_json: provenance_json.clone(),
-        })?;
-
-        Ok(DownloadedAsset {
+        build_fetched_download(
+            &request,
             cache_key,
-            source: request.source.to_owned(),
-            asset_url: request.asset.asset_url.clone(),
-            final_url: final_url.to_string(),
-            mime_type,
-            role: request.asset.role.clone(),
-            status_code: status.as_u16(),
-            sha256: stored.sha256,
-            path: stored.path,
-            size_bytes: stored.size_bytes,
+            final_url.as_str(),
+            status,
+            response_headers_json,
             etag,
             last_modified,
-            cache_policy: effective_policy,
-            cache_status,
-            response_headers_json,
-            provenance_json,
-        })
+            mime_type,
+            &headers,
+            stored,
+        )
+    }
+
+    pub(crate) fn persist_prepared_download(
+        &self,
+        cache: &CacheStore<'_>,
+        prepared: PendingCachePersist,
+    ) -> DownloadResult<DownloadedAsset> {
+        persist_download(cache, prepared)
     }
 
     async fn read_bounded(
@@ -388,73 +367,6 @@ pub fn store_cache_policy(policy: crate::sources::CachePolicy) -> CachePolicy {
     }
 }
 
-fn revalidated_asset(
-    request: AssetDownloadRequest<'_>,
-    cached: Option<CacheEntry>,
-    cache_key: String,
-    response_headers_json: String,
-    response_etag: Option<String>,
-    response_last_modified: Option<String>,
-) -> DownloadResult<DownloadedAsset> {
-    let entry = cached.ok_or_else(|| DownloadError::MissingCachedBody {
-        cache_key: cache_key.clone(),
-    })?;
-    let sha256 = entry
-        .body_sha256
-        .clone()
-        .ok_or_else(|| DownloadError::MissingCachedBody {
-            cache_key: cache_key.clone(),
-        })?;
-    let path = entry
-        .body_path
-        .clone()
-        .ok_or_else(|| DownloadError::MissingCachedBody {
-            cache_key: cache_key.clone(),
-        })?;
-    let size_bytes = std::fs::metadata(&path)
-        .map(|metadata| metadata.len())
-        .map_err(|_| DownloadError::MissingCachedBody {
-            cache_key: cache_key.clone(),
-        })?;
-    let etag = response_etag.or(entry.etag);
-    let last_modified = response_last_modified.or(entry.last_modified);
-    let provenance_json = provenance_json(&Provenance {
-        cache_key: &cache_key,
-        source: request.source,
-        asset_url: &request.asset.asset_url,
-        final_url: &request.asset.asset_url,
-        method: "GET",
-        status_code: StatusCode::NOT_MODIFIED.as_u16(),
-        cache_status: DownloadCacheStatus::Revalidated.as_str(),
-        cache_policy: cache_policy_str(entry.cache_policy),
-        sha256: &sha256,
-        size_bytes,
-        body_path: Some(&path),
-        etag: etag.as_deref(),
-        last_modified: last_modified.as_deref(),
-        response_headers_json: &response_headers_json,
-    })?;
-
-    Ok(DownloadedAsset {
-        cache_key,
-        source: request.source.to_owned(),
-        asset_url: request.asset.asset_url.clone(),
-        final_url: request.asset.asset_url.clone(),
-        mime_type: request.asset.mime_type.clone(),
-        role: request.asset.role.clone(),
-        status_code: StatusCode::NOT_MODIFIED.as_u16(),
-        sha256,
-        path: PathBuf::from(path),
-        size_bytes,
-        etag,
-        last_modified,
-        cache_policy: entry.cache_policy,
-        cache_status: DownloadCacheStatus::Revalidated,
-        response_headers_json,
-        provenance_json,
-    })
-}
-
 fn validate_asset_url(url: &str) -> DownloadResult<Url> {
     let parsed = Url::parse(url).map_err(|err| DownloadError::InvalidUrl {
         url: url.to_owned(),
@@ -467,27 +379,6 @@ fn validate_asset_url(url: &str) -> DownloadResult<Url> {
             url: url.to_owned(),
             message: "only http and https asset URLs are supported".to_owned(),
         })
-    }
-}
-
-fn effective_cache_policy(
-    policy: CachePolicy,
-    headers: &reqwest::header::HeaderMap,
-) -> CachePolicy {
-    if policy == CachePolicy::DoNotPersist {
-        return CachePolicy::DoNotPersist;
-    }
-    let cache_control = header_string(headers, CACHE_CONTROL)
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if cache_control
-        .split(',')
-        .map(str::trim)
-        .any(|directive| matches!(directive, "no-store" | "private"))
-    {
-        CachePolicy::DoNotPersist
-    } else {
-        CachePolicy::RespectSourceHeaders
     }
 }
 
@@ -524,35 +415,6 @@ fn headers_json(headers: &reqwest::header::HeaderMap) -> Result<String, serde_js
     serde_json::to_string(&Value::Object(object))
 }
 
-fn provenance_json(provenance: &Provenance<'_>) -> Result<String, serde_json::Error> {
-    serde_json::to_string(provenance)
-}
-
-fn cache_policy_str(policy: CachePolicy) -> &'static str {
-    match policy {
-        CachePolicy::RespectSourceHeaders => "respect_source_headers",
-        CachePolicy::DoNotPersist => "do_not_persist",
-    }
-}
-
-#[derive(Serialize)]
-struct Provenance<'a> {
-    cache_key: &'a str,
-    source: &'a str,
-    asset_url: &'a str,
-    final_url: &'a str,
-    method: &'a str,
-    status_code: u16,
-    cache_status: &'a str,
-    cache_policy: &'a str,
-    sha256: &'a str,
-    size_bytes: u64,
-    body_path: Option<&'a str>,
-    etag: Option<&'a str>,
-    last_modified: Option<&'a str>,
-    response_headers_json: &'a str,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -580,11 +442,14 @@ mod tests {
     fn cache_control_no_store_disables_cache_entry() {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
-            CACHE_CONTROL,
+            reqwest::header::CACHE_CONTROL,
             "max-age=60, no-store".parse().expect("header"),
         );
         assert_eq!(
-            effective_cache_policy(CachePolicy::RespectSourceHeaders, &headers),
+            crate::ingest::download_persist::effective_cache_policy(
+                CachePolicy::RespectSourceHeaders,
+                &headers,
+            ),
             CachePolicy::DoNotPersist
         );
     }

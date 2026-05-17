@@ -1,6 +1,7 @@
 pub mod cancel;
 pub mod chunk;
 pub mod download;
+mod download_persist;
 pub mod executor;
 #[cfg(test)]
 mod executor_cancel_tests;

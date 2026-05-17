@@ -213,21 +213,25 @@ impl QueuedIngestionExecutor {
             Some("Downloading selected asset with bounded size and explicit redirect policy."),
         )?;
         self.check_cancellation(cancellation, CancellationCheckpoint::BeforeDownload)?;
+        let request = AssetDownloadRequest {
+            source: adapter.name(),
+            asset: &source_asset,
+            cache_policy,
+            redirect_policy: adapter.redirect_policy(),
+            force: self.force_download,
+        };
+        let cached = {
+            let cache = CacheStore::new(store);
+            self.downloader.load_cached_entry(&cache, &request)?
+        };
+        let prepared = self
+            .downloader
+            .download_http(files, request, cached)
+            .await?;
         let downloaded = {
             let cache = CacheStore::new(store);
             self.downloader
-                .download(
-                    files,
-                    &cache,
-                    AssetDownloadRequest {
-                        source: adapter.name(),
-                        asset: &source_asset,
-                        cache_policy,
-                        redirect_policy: adapter.redirect_policy(),
-                        force: self.force_download,
-                    },
-                )
-                .await?
+                .persist_prepared_download(&cache, prepared)?
         };
         self.check_cancellation(cancellation, CancellationCheckpoint::AfterDownload)?;
 

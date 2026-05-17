@@ -121,6 +121,21 @@ Additional checkpoint after the mid-job cancellation slice:
 - The worker OCR adapter moved to `src/ingest/worker_ocr.rs` so cancellation
   propagation does not grow the near-limit `src/ingest/worker.rs` hotspot.
 
+Additional checkpoint after the download-cache boundary slice:
+
+- Split downloader cache policy/provenance/persistence handling into
+  `src/ingest/download_persist.rs` so cache behavior stays isolated from the
+  HTTP/body acquisition path.
+- `AssetDownloader` now supports a two-phase flow (`load_cached_entry` ->
+  async `download_http` -> sync `persist_prepared_download`) and the executor
+  now uses that flow. This removes the SQLite-backed `CacheStore` borrow from
+  the async HTTP await boundary while preserving existing semantics for
+  redirects, ETag/Last-Modified revalidation, `DoNotPersist`, and
+  header-driven `RespectSourceHeaders` behavior.
+- Downloader integration coverage remains in `tests/download_cache.rs`, and
+  focused helper tests now cover header-driven do-not-persist policy and cache
+  row deletion for do-not-persist persistence.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -133,6 +148,8 @@ Current ingestion slices now include:
   work is persisted as interrupted/resumable at safe boundaries, and cancellable
   local PDF/OCR child processes are killed without requiring live CIA/NARA HTTP
   or installed `pdftotext`/`ocrmypdf` tools in tests.
+- Split download cache persistence boundaries so queued execution no longer
+  holds the SQLite cache borrow across the async download await.
 
 Review fixes already included:
 
@@ -184,7 +201,10 @@ Then pick the next ingestion hardening item from the task list below.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
-- Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
+- Next hardening step for `Send` executor work: isolate remaining `SqliteStore`
+  borrows from async source HTTP awaits (source record resolution and asset
+  listing) and sketch the smallest viable boundary for blocking store sections
+  before attempting runtime-threading changes.
 
 ## Constraints
 
