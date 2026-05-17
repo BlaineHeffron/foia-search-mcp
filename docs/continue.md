@@ -16,7 +16,9 @@ Additional checkpoint after the OCR fallback seam slice:
   supplied OCR extractor may replace the page text only when page counts and
   page numbers match. If embedded extraction fails and policy is enabled, OCR may
   rescue the job. The default OCR extractor is a no-op unavailable extractor; no
-  real `ocrmypdf` or `tesseract` command is executed yet.
+  that checkpoint did not execute a real `ocrmypdf` or `tesseract` command; the
+  later local `ocrmypdf` backend slice below wires the first real local OCR
+  command behind the same default-off policy.
 - Refactored ingestion persistence so the executor can persist already-selected
   extracted pages with the selected `TextSource`, preserving `local_ocr`
   provenance when the seam selects OCR.
@@ -41,6 +43,23 @@ Additional checkpoint after the redirect policy slice:
   DNS resolution, so DNS rebinding and other SSRF TOCTOU cases remain possible
   for future cross-host policies. Do not enable cross-host redirect following
   for a real source without a reviewed network-level mitigation.
+
+Additional checkpoint after the local `ocrmypdf` backend slice:
+
+- Added a real local OCR backend in `src/ingest/ocrmypdf.rs`. It runs
+  `ocrmypdf` with structured command arguments in a private temp directory,
+  enforces a timeout, captures bounded stderr, validates the OCR output PDF, and
+  reparses the OCRed PDF through the existing `PdftotextExtractor` so page text
+  normalization remains consistent.
+- OCR remains default-off in two layers. `FOIA_SEARCH_OCR_FALLBACK` still
+  defaults to `off`, and the backend defaults to `FOIA_SEARCH_OCR_BACKEND=none`.
+  Production worker wiring uses the no-op OCR extractor unless both
+  `FOIA_SEARCH_OCR_FALLBACK=on_quality_warning` and
+  `FOIA_SEARCH_OCR_BACKEND=ocrmypdf` are set.
+- Added backend configuration for `FOIA_SEARCH_OCRMYPDF_BIN`,
+  `FOIA_SEARCH_OCR_TIMEOUT_SECONDS`, and
+  `FOIA_SEARCH_OCR_MAX_STDERR_BYTES`. Tests use fake local executables and do
+  not require `ocrmypdf` to be installed.
 
 Current ingestion slices now include:
 
@@ -96,11 +115,8 @@ Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_S
 ## Next Tasks
 
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
-- Decide whether the first real OCR backend should be `ocrmypdf`, `tesseract`,
-  or a two-step adapter that can support both.
-- Wire a real local OCR extractor behind the existing `TextExtractor` seam using
-  structured command arguments and bounded temp outputs. Preserve the current
-  default-off policy.
+- Add a later `tesseract` backend only if needed; the backend config now has a
+  small enum shape that can support another local OCR backend.
 - Decide whether OCR fallback incompatibility should become a recorded job
   warning. The current seam keeps embedded text silently when OCR page boundaries
   differ so citation page numbers remain tied to embedded extraction.

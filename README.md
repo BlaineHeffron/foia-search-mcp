@@ -106,8 +106,17 @@ Rust:
 - `FOIA_SEARCH_NARA_API_KEY`: required for NARA adapter requests.
 - `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2`.
 - `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
-  set to `on_quality_warning` to enable the PDF fallback selection seam once a
-  real local OCR extractor is wired.
+  set to `on_quality_warning` to allow local OCR when embedded PDF text has
+  quality warnings or embedded extraction fails.
+- `FOIA_SEARCH_OCR_BACKEND`: optional local OCR backend. Defaults to `none`;
+  set to `ocrmypdf` to run the `ocrmypdf` backend. OCR still remains disabled
+  unless `FOIA_SEARCH_OCR_FALLBACK=on_quality_warning` is also set.
+- `FOIA_SEARCH_OCRMYPDF_BIN`: optional `ocrmypdf` executable path. Defaults to
+  `ocrmypdf`.
+- `FOIA_SEARCH_OCR_TIMEOUT_SECONDS`: optional local OCR command timeout.
+  Defaults to `300`.
+- `FOIA_SEARCH_OCR_MAX_STDERR_BYTES`: optional stderr capture limit for local
+  OCR command failures. Defaults to `8192`.
 
 TypeScript draft:
 

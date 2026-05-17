@@ -1,6 +1,7 @@
 use crate::ingest::{
-    ExecutorError, ExecutorJobOutcome, OcrFallbackPolicy, PdftotextExtractor,
-    QueuedIngestionExecutor, TextExtractor,
+    ExecutorError, ExecutorJobOutcome, NoopOcrExtractor, OcrBackend, OcrBackendConfig,
+    OcrFallbackPolicy, OcrmypdfConfig, OcrmypdfExtractor, PdftotextExtractor,
+    QueuedIngestionExecutor, TextExtraction, TextExtractor,
 };
 use crate::sources::SourceAdapter;
 use crate::store::{ContentAddressedStore, SqliteStore, StoreError};
@@ -19,6 +20,7 @@ pub struct QueuedIngestionWorker {
     sources: Vec<Arc<dyn SourceAdapter>>,
     poll_interval: Duration,
     ocr_policy: OcrFallbackPolicy,
+    ocr_backend: OcrBackendConfig,
 }
 
 #[derive(Debug)]
@@ -63,11 +65,17 @@ impl QueuedIngestionWorker {
             sources,
             poll_interval: DEFAULT_POLL_INTERVAL,
             ocr_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
         }
     }
 
     pub fn with_ocr_policy(mut self, ocr_policy: OcrFallbackPolicy) -> Self {
         self.ocr_policy = ocr_policy;
+        self
+    }
+
+    pub fn with_ocr_backend(mut self, ocr_backend: OcrBackendConfig) -> Self {
+        self.ocr_backend = ocr_backend;
         self
     }
 
@@ -83,20 +91,32 @@ impl QueuedIngestionWorker {
     }
 
     pub async fn run_once(&self) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
-        self.run_once_with_extractor(&PdftotextExtractor::default())
+        let pdf_extractor = PdftotextExtractor::default();
+        let ocr_extractor = worker_ocr_extractor(self.ocr_policy, &self.ocr_backend);
+        self.run_once_with_extractors(&pdf_extractor, &ocr_extractor)
             .await
     }
 
+    #[cfg(test)]
     async fn run_once_with_extractor(
         &self,
         pdf_extractor: &dyn TextExtractor,
+    ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
+        self.run_once_with_extractors(pdf_extractor, &NoopOcrExtractor)
+            .await
+    }
+
+    async fn run_once_with_extractors(
+        &self,
+        pdf_extractor: &dyn TextExtractor,
+        ocr_extractor: &dyn TextExtractor,
     ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
         let mut store = self.open_store()?;
         let files = ContentAddressedStore::new(&self.data_dir);
         let executor = QueuedIngestionExecutor::new("foia-ingest-worker", self.sources.clone())?
             .with_ocr_policy(self.ocr_policy);
         executor
-            .run_next(&mut store, &files, pdf_extractor)
+            .run_next_with_ocr(&mut store, &files, pdf_extractor, ocr_extractor)
             .await
             .map_err(WorkerError::from)
     }
@@ -148,6 +168,50 @@ impl QueuedIngestionWorker {
         let db_dir = self.data_dir.join("db");
         std::fs::create_dir_all(&db_dir)?;
         Ok(SqliteStore::open(db_dir.join("foia.sqlite"))?)
+    }
+}
+
+enum WorkerOcrExtractor {
+    Noop(NoopOcrExtractor),
+    Ocrmypdf(OcrmypdfExtractor),
+}
+
+impl TextExtractor for WorkerOcrExtractor {
+    fn extract_pages(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<crate::ingest::ExtractedText, TextExtraction> {
+        match self {
+            Self::Noop(extractor) => extractor.extract_pages(path),
+            Self::Ocrmypdf(extractor) => extractor.extract_pages(path),
+        }
+    }
+}
+
+fn worker_ocr_extractor(
+    policy: OcrFallbackPolicy,
+    backend_config: &OcrBackendConfig,
+) -> WorkerOcrExtractor {
+    match effective_ocr_backend(policy, backend_config) {
+        OcrBackend::Ocrmypdf => {
+            WorkerOcrExtractor::Ocrmypdf(OcrmypdfExtractor::new(OcrmypdfConfig::new(
+                backend_config.ocrmypdf_binary.clone(),
+                backend_config.timeout,
+                backend_config.max_stderr_bytes,
+            )))
+        }
+        OcrBackend::None => WorkerOcrExtractor::Noop(NoopOcrExtractor),
+    }
+}
+
+fn effective_ocr_backend(
+    policy: OcrFallbackPolicy,
+    backend_config: &OcrBackendConfig,
+) -> OcrBackend {
+    if policy.is_enabled() && backend_config.backend.is_enabled() {
+        backend_config.backend
+    } else {
+        OcrBackend::None
     }
 }
 
@@ -411,6 +475,30 @@ mod tests {
         kick.send(WorkerCommand::Shutdown).expect("send shutdown");
 
         assert!(shutdown_requested(&control));
+    }
+
+    #[test]
+    fn effective_ocr_backend_requires_policy_and_backend_opt_in() {
+        let backend = OcrBackendConfig {
+            backend: OcrBackend::Ocrmypdf,
+            ..OcrBackendConfig::default()
+        };
+
+        assert_eq!(
+            effective_ocr_backend(OcrFallbackPolicy::off(), &backend),
+            OcrBackend::None
+        );
+        assert_eq!(
+            effective_ocr_backend(
+                OcrFallbackPolicy::on_quality_warning(),
+                &OcrBackendConfig::default()
+            ),
+            OcrBackend::None
+        );
+        assert_eq!(
+            effective_ocr_backend(OcrFallbackPolicy::on_quality_warning(), &backend),
+            OcrBackend::Ocrmypdf
+        );
     }
 
     fn enqueue(data_dir: &std::path::Path) {

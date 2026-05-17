@@ -16,6 +16,7 @@ impl FoiaSearchRuntime {
         let worker =
             QueuedIngestionWorker::new(config.data_dir.clone(), sources.iter().cloned().collect())
                 .with_ocr_policy(config.ocr_fallback_policy)
+                .with_ocr_backend(config.ocr_backend.clone())
                 .spawn();
         let server = match worker.kick_handle() {
             Some(kick) => FoiaSearchServer::from_parts(config, sources).with_ingestion_worker(kick),

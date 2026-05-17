@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::ingest::OcrFallbackPolicy;
+use crate::ingest::{OcrBackendConfig, OcrFallbackPolicy};
 use serde::Serialize;
 
 const DEFAULT_DATA_DIR_NAME: &str = ".foia-search";
@@ -11,6 +11,7 @@ pub struct Config {
     pub nara_api_key: Option<String>,
     pub nara_api_base_url: String,
     pub ocr_fallback_policy: OcrFallbackPolicy,
+    pub ocr_backend: OcrBackendConfig,
 }
 
 impl Config {
@@ -28,12 +29,23 @@ impl Config {
         let ocr_fallback_policy = OcrFallbackPolicy::from_env_value(
             std::env::var("FOIA_SEARCH_OCR_FALLBACK").ok().as_deref(),
         );
+        let ocr_backend = OcrBackendConfig::from_env_values(
+            std::env::var("FOIA_SEARCH_OCR_BACKEND").ok().as_deref(),
+            std::env::var("FOIA_SEARCH_OCRMYPDF_BIN").ok().as_deref(),
+            std::env::var("FOIA_SEARCH_OCR_TIMEOUT_SECONDS")
+                .ok()
+                .as_deref(),
+            std::env::var("FOIA_SEARCH_OCR_MAX_STDERR_BYTES")
+                .ok()
+                .as_deref(),
+        );
 
         Self {
             data_dir,
             nara_api_key,
             nara_api_base_url,
             ocr_fallback_policy,
+            ocr_backend,
         }
     }
 
@@ -107,6 +119,7 @@ fn home_dir_or_current() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ingest::OcrBackend;
 
     #[test]
     fn source_status_reports_nara_key_state() {
@@ -115,6 +128,7 @@ mod tests {
             nara_api_key: Some("key".to_string()),
             nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
             ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
         };
 
         let nara = config
@@ -126,5 +140,13 @@ mod tests {
             nara.as_ref().map(|source| source.status.as_str()),
             Some("configured")
         ));
+    }
+
+    #[test]
+    fn ocr_backend_defaults_disabled_without_env_values() {
+        let config = OcrBackendConfig::from_env_values(None, None, None, None);
+
+        assert_eq!(config.backend, OcrBackend::None);
+        assert!(!config.backend.is_enabled());
     }
 }
