@@ -129,6 +129,13 @@ impl Config {
                 note: "NOAA Institutional Repository adapter is available for official repository.library.noaa.gov publication/report leads; preserve office/program, DOI/report metadata, and prefer repository PDF assets."
                     .to_string(),
             },
+            SourceStatus {
+                name: "nsa".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "NSA FOIA Reading Room adapter is available for official nsa.gov Reading Room and FOIA Reports and Releases leads; prefer PDF assets and verify page boundaries before citation."
+                    .to_string(),
+            },
         ]
     }
 }
@@ -360,6 +367,27 @@ mod tests {
         assert_eq!(noaa.status, "available");
         assert!(noaa.note.contains("repository.library.noaa.gov"));
         assert!(noaa.note.contains("prefer repository PDF assets"));
+    }
+
+    #[test]
+    fn source_status_reports_nsa_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let nsa = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "nsa")
+            .expect("nsa source should be listed");
+
+        assert_eq!(nsa.status, "available");
+        assert!(nsa.note.contains("nsa.gov"));
+        assert!(nsa.note.contains("verify page boundaries"));
     }
 
     #[test]

@@ -58,6 +58,7 @@ src/
     frus.rs
     dtic.rs
     noaa.rs
+    nsa.rs
   ingest/
     mod.rs
     jobs.rs
@@ -147,7 +148,7 @@ Core fields:
 
 - `id`: user-facing stable ID, usually `<source>:<source_id>`, never used directly as a file path.
 - `document_key`: filesystem-safe internal key used for derived text/OCR paths.
-- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, or future adapter name.
+- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, or future adapter name.
 - `source_id`: ID from the original source.
 - `title`
 - `date`
@@ -257,6 +258,8 @@ FRUS is fourth. Use the Office of the Historian catalog/API, TEI/XML where avail
 NOAA is fifth. Target the NOAA Institutional Repository and related technical report collections. Prefer repository metadata and document PDFs. Treat OAI-PMH or repository JSON as a source-specific implementation detail behind the adapter.
 
 DTIC is sixth. Treat public DTIC as a fragile adapter until a stable official API is confirmed. Do not depend on undocumented endpoints for core functionality without clear warnings and tests.
+
+NSA FOIA Reading Room is available as an official-source adapter for `nsa.gov` Reading Room and FOIA Reports and Releases leads. Treat results as citation leads: prefer linked PDFs, preserve official page/PDF URLs, and require PDF ingestion/page-boundary verification before page-specific citation.
 
 PURSUE / War Department UAP releases should be added as an official-source adapter after GovInfo or alongside the UAP-specific source batch. Target `https://www.war.gov/ufo/` and official linked release assets first. Preserve release tranche metadata, list PDFs/images/videos as assets, ingest PDFs by default, and leave images/videos metadata-only until media handling is explicitly designed.
 

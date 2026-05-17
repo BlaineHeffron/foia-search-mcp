@@ -4,7 +4,7 @@ use crate::mcp::tools::FoiaSearchServer;
 use crate::sources::{
     aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
     dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter,
-    nara::NaraAdapter, noaa::NoaaAdapter, pursue::PursueAdapter, SourceAdapter,
+    nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, pursue::PursueAdapter, SourceAdapter,
 };
 use std::sync::Arc;
 
@@ -55,5 +55,6 @@ fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
         Arc::new(FrusAdapter::from_env()),
         Arc::new(DticAdapter::from_env()),
         Arc::new(NoaaAdapter::from_env()),
+        Arc::new(NsaAdapter::from_env()),
     ]
 }

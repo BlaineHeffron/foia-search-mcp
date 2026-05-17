@@ -95,4 +95,16 @@
     <question>Resolve a DTIC accession lead safely: start from source status, fetch ADA630142, and summarize official provenance with fragility caveats.</question>
     <expected>Call list_sources, then call get_source_record with source "dtic" and accession/official URL (for example ADA630142 or https://apps.dtic.mil/sti/citations/ADA630142); report official citation URL, PDF URL when present, accession/report metadata, and explicitly preserve DTIC fragility/distribution warnings rather than implying robust public API search coverage.</expected>
   </eval>
+  <eval id="25">
+    <question>For local document cia:CREST-weather, inspect derived text/OCR artifact drift, plan the repair, and apply only if the operator confirmation is available.</question>
+    <expected>Call report_derived_artifact_drift with document_id "cia:CREST-weather" and treat it as read-only; call plan_derived_artifact_repairs and summarize rewrite_from_sqlite versus manual_review actions; do not assume automatic repair; call apply_derived_artifact_repairs only with exact confirmation "apply derived artifact repairs for cia:CREST-weather"; report rewritten/already_current/skipped_manual_review and advise re-running report or resolving manual-review orphaned artifacts separately.</expected>
+  </eval>
+  <eval id="26">
+    <question>A derived-artifact repair apply request for cia:CREST-weather failed because the confirmation was missing or wrong. Recover safely.</question>
+    <expected>Recognize the invalid_params confirmation error; do not retry with guessed or partial confirmation unless the operator explicitly supplies the exact string; use report_derived_artifact_drift or plan_derived_artifact_repairs to show current scope and the required confirmation "apply derived artifact repairs for cia:CREST-weather"; explain that report/plan are dry-run and orphaned artifacts remain manual-review only.</expected>
+  </eval>
+  <eval id="27">
+    <question>Find an NSA FOIA Reading Room lead about Roswell, fetch one normalized NSA record, and summarize citation safety context.</question>
+    <expected>Call list_sources, then search_source with source "nsa" and a query such as "Roswell"; call get_source_record using a returned nsa id or official nsa.gov URL; report official NSA page/PDF URL, citation note, terms note, asset_count/pdf_asset_count, and warn that page citations require PDF ingestion and page-boundary verification.</expected>
+  </eval>
 </evals>

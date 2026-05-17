@@ -117,7 +117,7 @@ fn plan_to_response(
         .filter(|action| matches!(action, InternalRepairAction::RewriteFromSqlite { .. }))
         .count();
     let manual_review_count = plan.actions.len().saturating_sub(rewrite_count);
-    let next_actions = build_plan_next_actions(&plan.actions);
+    let next_actions = build_plan_next_actions(document_id, &plan.actions);
 
     DerivedArtifactRepairPlanResponse {
         document_id: document_id.to_owned(),
@@ -184,24 +184,25 @@ fn build_report_next_actions(
     next_actions
 }
 
-fn build_plan_next_actions(actions: &[InternalRepairAction]) -> Vec<String> {
+fn build_plan_next_actions(document_id: &str, actions: &[InternalRepairAction]) -> Vec<String> {
     let mut next_actions = Vec::new();
     if actions.is_empty() {
         next_actions.push("No repair actions were required.".to_owned());
         return next_actions;
     }
 
+    let confirmation = expected_confirmation(document_id);
     if actions
         .iter()
         .any(|action| matches!(action, InternalRepairAction::ManualReview { .. }))
     {
-        next_actions.push(
-            "Review manual-review items before applying; apply skips those actions by design."
-                .to_owned(),
-        );
+        next_actions.push(format!(
+            "Review manual-review items first; apply skips them. To rewrite safe items, confirm: {confirmation}"
+        ));
     } else {
-        next_actions
-            .push("Apply the plan with explicit confirmation if the scope is correct.".to_owned());
+        next_actions.push(format!(
+            "Apply only if the scope is correct, with confirmation: {confirmation}"
+        ));
     }
 
     next_actions

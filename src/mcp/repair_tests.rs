@@ -30,10 +30,52 @@ fn report_and_plan_surface_remain_dry_run() -> Result<(), Box<dyn std::error::Er
         .actions
         .iter()
         .any(|action| action.action == "manual_review"));
+    assert!(plan.next_actions.iter().any(|next| next
+        .contains("confirm: apply derived artifact repairs for cia:CREST-repair-surface")));
     assert!(fixture.document_text_path().exists());
     assert!(fixture.page_text_path(1).exists());
     assert!(fixture.ocr_page_text_path(1).exists());
     assert!(fixture.orphan_page_text_path(99).exists());
+
+    Ok(())
+}
+
+#[test]
+fn compact_next_actions_are_operator_gated() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = seed_fixture()?;
+    let confirmation = format!(
+        "apply derived artifact repairs for {}",
+        fixture.document_id()
+    );
+
+    let report =
+        report_derived_artifact_drift(&fixture.store, &fixture.files, fixture.document_id())
+            .expect("report derived artifact drift");
+    assert_eq!(report.next_actions.len(), 1);
+    assert!(report.next_actions[0].contains("Plan the drift"));
+    assert!(report.next_actions[0].contains("manual-review only"));
+    assert!(fixture.document_text_path().exists());
+
+    let plan = plan_derived_artifact_repairs(&fixture.store, &fixture.files, fixture.document_id())
+        .expect("plan derived artifact repairs");
+    assert_eq!(plan.next_actions.len(), 1);
+    assert!(plan.next_actions[0].contains("Review manual-review items"));
+    assert!(plan.next_actions[0].contains("apply skips them"));
+    assert!(plan.next_actions[0].contains(&confirmation));
+    assert!(fixture.document_text_path().exists());
+
+    let wrong_confirmation_error = apply_derived_artifact_repairs(
+        &fixture.store,
+        &fixture.files,
+        fixture.document_id(),
+        "apply derived artifact repairs",
+    )
+    .expect_err("wrong confirmation should fail");
+    assert!(wrong_confirmation_error.to_string().contains(&confirmation));
+    assert_eq!(
+        fs::read_to_string(fixture.document_text_path()).expect("read unrepaired document text"),
+        "stale document text"
+    );
 
     Ok(())
 }

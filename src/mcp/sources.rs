@@ -13,6 +13,7 @@ pub(crate) const VALID_SOURCES: &[&str] = &[
     "frus",
     "dtic",
     "noaa",
+    "nsa",
     "fbi_vault",
 ];
 
@@ -71,6 +72,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
         ),
         "noaa" => Some(
             "NOAA Institutional Repository adapter is wired for official repository.library.noaa.gov report/publication leads; preserve office/program metadata and prefer repository PDF assets with official item URLs."
+                .to_owned(),
+        ),
+        "nsa" => Some(
+            "NSA FOIA Reading Room adapter is wired for official nsa.gov Reading Room and FOIA Reports and Releases leads; prefer PDF assets and verify page boundaries before citation."
                 .to_owned(),
         ),
         _ => None,

@@ -8,6 +8,7 @@ pub mod frus;
 pub mod govinfo;
 pub mod nara;
 pub mod noaa;
+pub mod nsa;
 pub mod pursue;
 
 use crate::ingest::RedirectPolicy;

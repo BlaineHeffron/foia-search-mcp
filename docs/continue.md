@@ -235,10 +235,22 @@ Additional checkpoint after the GovInfo live API adapter slice:
 - Updated user-facing source status/tool wording so `list_sources`,
   `search_source`, and `get_source_record` no longer describe GovInfo as manual.
 
+Additional checkpoint after the NSA FOIA Reading Room adapter slice:
+
+- Added `src/sources/nsa.rs` and split live helper modules for an official
+  `nsa` adapter targeting `https://www.nsa.gov/Helpful-Links/NSA-FOIA/Reading-Room/`
+  plus the official FOIA Reports and Releases list.
+- The adapter remains conservative: source search parses official NSA page
+  links from deterministic fixtures, `get_record` accepts returned source IDs
+  or official NSA URLs, and assets are ordered PDF-first while non-PDF links are
+  retained as metadata leads.
+- NSA keeps default source policy contracts: `cache_policy=RespectSourceHeaders`
+  and `redirect_policy=Deny`.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
-- Startup/recovery is currently DB-centric: the worker reclaims queued/interrupted/expired-running jobs from SQLite, and resume tests cover stale page/chunk/FTS replacement. Derived `text/` and `ocr/` reconciliation APIs now exist internally, but they are not wired into startup or worker recovery; future index-artifact reconciliation remains follow-on work.
+- Startup/recovery is currently DB-centric: the worker reclaims queued/interrupted/expired-running jobs from SQLite, and resume tests cover stale page/chunk/FTS replacement. Derived `text/` and `ocr/` reconciliation APIs now exist internally, and SQLite FTS reconciliation/repair APIs now exist for explicit operator repair paths. Neither repair path is wired into startup or worker recovery.
 - Source-record planning from normalized `SourceRecord` values into ingestion documents and selected assets.
 - Bounded asset downloading into the content-addressed file store with cache provenance, ETag/Last-Modified revalidation, and `DoNotPersist` cache semantics.
 - External `pdftotext` extraction with structured command arguments, timeout handling, bounded stderr capture, temp output validation, and text-quality warnings.
@@ -293,7 +305,15 @@ Additional checkpoint after the derived-artifact reconciliation slice:
   blobs, does not delete orphaned artifacts automatically, and is not wired
   into runtime/startup/worker auto-repair. Operator-facing MCP tools now expose
   report/plan/apply reconciliation, with apply gated by explicit confirmation.
-- Future index-artifact reconciliation remains a separate follow-on slice.
+
+Additional checkpoint after the SQLite FTS index repair slice:
+
+- Added `src/index/reconcile_repair.rs` for explicit SQLite FTS repair planning
+  and apply. Missing/stale `chunk_fts` rows are rewritten from canonical
+  `documents`/`chunks` state in one transaction; orphaned FTS rows are
+  conservative manual-review actions and are not deleted automatically.
+- Focused tests cover missing, stale, duplicate, mixed, orphan-only,
+  idempotent second apply, and canonical-table non-mutation behavior.
 
 ## Validation Commands
 
@@ -312,19 +332,19 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 
 ## First Action Next Session
 
-Start with a read-only pass over `src/ingest/reconcile.rs` and MCP
-report/plan/apply behavior to decide follow-on guardrails/evals. Do not add
-automatic repair to startup or worker paths; keep repair actions explicit and
-operator-confirmed, then move on to index-artifact reconciliation planning.
+Start with a read-only pass over the current repair surfaces before extending
+them. Do not add automatic repair to startup or worker paths; keep repair
+actions explicit and operator-confirmed. If SQLite FTS repair is exposed through
+MCP later, add the same confirmation, wording, and eval guardrails used for
+derived-artifact repair.
 
 ## Next Tasks
 
 - Phase 8 source expansion is complete. If source expansion resumes, next
   source-adapter todo order should be:
-  NSA FOIA Reading Room, State Department Virtual Reading Room, DIA FOIA
-  Electronic Reading Room, OSD/Joint Staff reading room, Army FOIA Reading
-  Room, then the broader Navy reading-room family if DoD coverage still needs
-  to expand. Each source needs fixtures,
+  State Department Virtual Reading Room, DIA FOIA Electronic Reading Room,
+  OSD/Joint Staff reading room, Army FOIA Reading Room, then the broader Navy
+  reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
   least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to
@@ -340,8 +360,8 @@ operator-confirmed, then move on to index-artifact reconciliation planning.
   the backend config already has a small enum shape for another local backend.
 - Derived-artifact repair is exposed through operator-facing MCP
   report/plan/apply tools. Keep runtime/startup/worker auto-repair wiring
-  untouched, and focus follow-on work on guardrails/evals and index-artifact
-  reconciliation.
+  untouched, and keep future repair surfaces explicit, confirmed, and covered
+  by guardrail evals.
 
 ## Constraints
 
