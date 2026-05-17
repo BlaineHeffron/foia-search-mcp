@@ -294,15 +294,29 @@ fn collect_orphaned_page_files(
             source,
         })?;
         let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        let Some(page_number) = parse_page_number(file_name) else {
+        let page_number = parse_page_number(file_name);
+
+        if !path.is_file() {
+            if page_number.is_some_and(|value| expected_pages.contains(&value)) {
+                // Expected page paths are handled by stale checks above; only report
+                // unexpected non-file entries as orphaned/manual-review artifacts.
+                continue;
+            }
+
+            issues.push(orphaned_issue(
+                kind,
+                path,
+                page_number,
+                "derived page artifact entry is not a regular file".to_owned(),
+            ));
+            continue;
+        }
+
+        let Some(page_number) = page_number else {
             issues.push(orphaned_issue(
                 kind,
                 path,

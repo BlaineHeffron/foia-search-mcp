@@ -170,6 +170,47 @@ fn reconcile_detects_orphaned_artifacts() {
 }
 
 #[test]
+fn reconcile_detects_orphaned_non_file_page_entries() {
+    let fixture = seed_fixture().expect("seed fixture");
+    write_expected_artifacts(&fixture).expect("write expected artifacts");
+
+    let text_pages_dir = fixture
+        .files
+        .root()
+        .join("text")
+        .join("pages")
+        .join(fixture.document_key.as_str());
+    let ocr_pages_dir = fixture
+        .files
+        .root()
+        .join("ocr")
+        .join("pages")
+        .join(fixture.document_key.as_str());
+    fs::create_dir_all(text_pages_dir.join("99.txt")).expect("create unexpected text directory");
+    fs::create_dir_all(ocr_pages_dir.join("scratch")).expect("create unexpected ocr directory");
+
+    let report = reconcile_derived_artifacts_for_document(
+        &fixture.store,
+        &fixture.files,
+        fixture.document_key.as_str(),
+    )
+    .expect("reconciliation");
+
+    assert!(has_issue(
+        &report,
+        DerivedArtifactKind::PageText,
+        DerivedArtifactIssueKind::Orphaned,
+        Some(99),
+    ));
+    assert!(has_issue(
+        &report,
+        DerivedArtifactKind::OcrPageText,
+        DerivedArtifactIssueKind::Orphaned,
+        None,
+    ));
+}
+
+#[test]
 fn reconcile_handles_absent_artifact_paths() {
     let fixture = seed_fixture().expect("seed fixture");
 
