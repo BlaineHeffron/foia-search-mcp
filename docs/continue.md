@@ -305,8 +305,6 @@ just fmt
 just lint
 just test
 just architecture
-npm test
-npm run build
 git diff --check
 ```
 
@@ -321,11 +319,12 @@ operator-confirmed, then move on to index-artifact reconciliation planning.
 
 ## Next Tasks
 
-- Phase 8 source expansion should prioritize official sources broadly, not only
-  the original GovInfo/FRUS/NOAA/DTIC list. After FBI Vault, current
-  source-adapter todo order:
-  AARO UAP historical records, FRUS, NOAA Institutional Repository, then DTIC.
-  Each source needs fixtures,
+- Phase 8 source expansion is complete. If source expansion resumes, next
+  source-adapter todo order should be:
+  NSA FOIA Reading Room, State Department Virtual Reading Room, DIA FOIA
+  Electronic Reading Room, OSD/Joint Staff reading room, Army FOIA Reading
+  Room, then the broader Navy reading-room family if DoD coverage still needs
+  to expand. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
   least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to
@@ -351,6 +350,6 @@ operator-confirmed, then move on to index-artifact reconciliation planning.
 - Keep Rust modules under the gate limits. Existing oversized modules are frozen at their current line counts and must be split before adding behavior.
 - Keep source IDs out of filesystem paths; use `document_key` and content hashes for local artifacts.
 - Preserve source citation and terms notes with every ingested document.
-- Treat TypeScript as draft/reference until removed; Rust is the primary implementation target.
+- The TypeScript draft has been removed; Rust is the primary implementation target.
 - Do not enable redirects by default; add explicit hop validation before allowing source-specific redirects.
 - Do not shell out through a string command for PDF/OCR work; use structured `Command` arguments only.

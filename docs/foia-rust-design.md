@@ -2,9 +2,9 @@
 
 ## Reader And Goal
 
-This document is for an engineer implementing the Rust FOIA Search MCP server. After reading it, they should be able to understand the current crate, port only the useful pieces from the TypeScript draft, and implement PDF ingestion, caching, local indexing, source adapters, and MCP tools in a phased way.
+This document is for an engineer implementing the Rust FOIA Search MCP server. After reading it, they should be able to understand the current crate and implement PDF ingestion, caching, local indexing, source adapters, and MCP tools in a phased way.
 
-The current TypeScript server should be treated as a prototype for source behavior and tool naming, not as the implementation base. The production direction is a new Rust crate with selective reuse from the existing Rust paper-search server.
+The removed TypeScript server was a prototype for source behavior and tool naming, not the implementation base. The production direction is the Rust crate with selective reuse from the existing Rust paper-search server.
 
 ## Decision Summary
 
@@ -23,7 +23,7 @@ Do not make FOIA Search a TypeScript server. PDF ingestion, OCR orchestration, h
 
 Keep FOIA Search separate from paper-search at first. The document model, citation requirements, page-level text, and source terms are different enough that merging too early would force awkward abstractions. Reuse code or design patterns selectively after the FOIA shape is clear.
 
-Replace the TypeScript draft during implementation. It can remain useful as a reference while porting CIA and NARA behavior, but the Rust crate should become the canonical server and runtime.
+The TypeScript draft has been replaced. The Rust crate is the canonical server and runtime.
 
 ## Design Constraints
 
@@ -246,7 +246,7 @@ For the MVP, source search should paginate one source at a time and the MCP sche
 
 ## Source Plan
 
-CIA Reading Room is the first adapter. Port the TypeScript behavior: search public Reading Room HTML, parse document pages, find PDF attachments, and warn when page structure looks wrong. It is valuable as a real-world scraper test because the HTML is not a clean API.
+CIA Reading Room is the first adapter. It should search public Reading Room HTML, parse document pages, find PDF attachments, and warn when page structure looks wrong. It is valuable as a real-world scraper test because the HTML is not a clean API.
 
 NARA Catalog is second. Add API-key configuration, source-specific rate budgeting, and support for records, digital objects, and extracted text when present. Do not bulk mirror NARA metadata. Disable persistent NARA API response caching by default; retain only the normalized metadata needed for a user-requested ingested document unless a separately reviewed data export path is implemented.
 
@@ -436,7 +436,7 @@ Implement `search_local_documents`, `get_document`, and `get_document_text`. Res
 
 ### Phase 5: CIA Adapter
 
-Port CIA search/detail parsing from the TypeScript prototype into Rust. Add ingest-by-CIA-ID and fixtures for search and document pages.
+Implement CIA search/detail parsing in Rust. Add ingest-by-CIA-ID and fixtures for search and document pages.
 
 ### Phase 6: NARA Adapter
 

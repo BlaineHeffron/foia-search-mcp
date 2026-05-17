@@ -4,11 +4,11 @@ MCP server for declassified and FOIA document research.
 
 ## Design Direction
 
-This repository is moving from the TypeScript draft toward a new Rust MCP server focused on PDF ingestion, local caching, OCR fallback, and searchable source-cited document text.
+This repository is a Rust MCP server focused on PDF ingestion, local caching, OCR fallback, and searchable source-cited document text.
 
 See [docs/foia-rust-design.md](docs/foia-rust-design.md) for the implementation design.
 
-The Rust MCP server is now the primary implementation target. The TypeScript code remains as a draft/reference implementation during migration and should not be treated as the current tool surface.
+The Rust MCP server is the primary implementation. The old TypeScript draft has been removed.
 
 ## Rust MCP Tools
 
@@ -72,39 +72,7 @@ Rust MCP config example:
 
 For a compiled binary, set `command` to the built executable path and omit the Cargo arguments.
 
-## TypeScript Draft Tools
-
-- `search_cia_reading_room`: search CIA FOIA Electronic Reading Room.
-- `get_cia_document`: fetch one CIA document page and exposed scan/PDF links.
-- `search_nara_catalog`: search National Archives Catalog API. Requires `FOIA_SEARCH_NARA_API_KEY`.
-- `get_nara_record`: fetch one NARA record by NAID.
-- `search_official_declass_sources`: return official source entry points and caveats.
-
-## TypeScript Draft Run
-
-```bash
-npm install
-npm run build
-node dist/index.js
-```
-
-## TypeScript Draft MCP Config
-
-```json
-{
-  "mcpServers": {
-    "foia-search": {
-      "command": "node",
-      "args": ["/home/blaine/projects/ResearchTools/foia-search/dist/index.js"],
-      "env": {}
-    }
-  }
-}
-```
-
 ## Env
-
-Rust:
 
 - `FOIA_SEARCH_DATA_DIR`: local cache/index directory. Defaults to a platform-specific data directory.
 - `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`.
@@ -128,12 +96,6 @@ Rust:
   Defaults to `300`.
 - `FOIA_SEARCH_OCR_MAX_STDERR_BYTES`: optional stderr capture limit for local
   OCR command failures. Defaults to `8192`.
-
-TypeScript draft:
-
-- `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`
-- `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2/records`
-- `FOIA_SEARCH_MAX_RESULTS`: defaults to `25`
 
 ## Notes
 
