@@ -1,7 +1,8 @@
 use super::{
     cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
-    govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter, CachePolicy, SearchOptions,
-    SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+    fbi_vault::FbiVaultAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
+    CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture,
+    SourceRecord, SourceStatus,
 };
 use crate::ingest::RedirectPolicy;
 
@@ -76,5 +77,11 @@ fn doj_epstein_adapter_redirect_policy_remains_deny_by_default() {
 #[test]
 fn doj_foia_adapter_redirect_policy_remains_deny_by_default() {
     let adapter = DojFoiaAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn fbi_vault_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = FbiVaultAdapter::default();
     assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
 }

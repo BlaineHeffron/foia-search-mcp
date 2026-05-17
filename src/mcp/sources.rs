@@ -12,6 +12,7 @@ pub(crate) const VALID_SOURCES: &[&str] = &[
     "frus",
     "dtic",
     "noaa",
+    "fbi_vault",
 ];
 
 pub(crate) fn validate_source_name(source: &str) -> Result<(), McpError> {
@@ -49,6 +50,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
         ),
         "doj_foia" => Some(
             "DOJ component FOIA/disclosure adapter is wired from the OIP all-components index; preserve component/category provenance and cite official component pages or PDFs."
+                .to_owned(),
+        ),
+        "fbi_vault" => Some(
+            "FBI Vault adapter is wired for official vault.fbi.gov search and file pages; preserve multipart part-order metadata and cite official Vault page/PDF URLs."
                 .to_owned(),
         ),
         _ => None,

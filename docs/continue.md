@@ -267,6 +267,18 @@ Review fixes already included:
   preserving interrupted stage/progress before resume, and failing after download
   without leaving local document/asset/page/chunk rows.
 
+Additional checkpoint after the FBI Vault adapter slice:
+
+- Added a fixture-backed `fbi_vault` source adapter for official `vault.fbi.gov`
+  search/file pages, keeping FBI Vault separate from DOJ Epstein and broader DOJ
+  component FOIA adapters.
+- The adapter preserves official Vault provenance, multipart part-order
+  metadata, PDF-first asset ordering, citation/terms notes, and source warnings
+  about historically uneven multipart files and page-boundary verification.
+- FBI Vault remains on default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`; tests use
+  deterministic loopback fixtures and do not require live network access.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
@@ -301,11 +313,10 @@ Then pick the next ingestion hardening item from the task list below.
 ## Next Tasks
 
 - Phase 8 source expansion should prioritize official sources broadly, not only
-  the original GovInfo/FRUS/NOAA/DTIC list. After the GovInfo live API adapter,
-  current source-adapter todo order:
-  PURSUE/`war.gov` UAP releases, DOJ Epstein Library, DOJ
-  component FOIA/disclosure indexes, FBI Vault, AARO UAP historical records,
-  FRUS, NOAA Institutional Repository, then DTIC. Each source needs fixtures,
+  the original GovInfo/FRUS/NOAA/DTIC list. After FBI Vault, current
+  source-adapter todo order:
+  AARO UAP historical records, FRUS, NOAA Institutional Repository, then DTIC.
+  Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
   least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to

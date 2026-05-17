@@ -26,7 +26,7 @@ const MAX_TEXT_PAGE_RANGE: u32 = 50;
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
     #[schemars(
-        description = "Single source to search: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
+        description = "Single source to search: cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, or noaa"
     )]
     source: String,
     #[schemars(description = "Research query to send to the source adapter")]
@@ -40,7 +40,7 @@ struct SearchSourceParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSourceRecordParams {
     #[schemars(
-        description = "Source adapter name: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
+        description = "Source adapter name: cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, or noaa"
     )]
     source: String,
     #[schemars(description = "Source record ID or canonical source URL")]
@@ -50,7 +50,7 @@ struct GetSourceRecordParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct IngestDocumentParams {
     #[schemars(
-        description = "Document ID such as cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, doj_epstein:data-set-1-files, or doj_foia:criminal-division"
+        description = "Document ID such as cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, doj_epstein:data-set-1-files, doj_foia:criminal-division, or fbi_vault:rosenberg-case/mark-page"
     )]
     document_id: String,
     #[schemars(description = "Force re-fetching source assets even if already cached")]
@@ -68,7 +68,7 @@ struct SearchLocalDocumentsParams {
     #[schemars(description = "Keyword query over locally ingested document text and metadata")]
     query: String,
     #[schemars(
-        description = "Optional source filter: cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, or noaa"
+        description = "Optional source filter: cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, or noaa"
     )]
     source: Option<String>,
     #[schemars(description = "Maximum local results to return. Default 10, maximum 100")]
@@ -134,7 +134,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA, GovInfo, PURSUE, DOJ Epstein, and DOJ component FOIA are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, and FBI Vault are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -164,7 +164,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. CIA, GovInfo, PURSUE, DOJ Epstein, and DOJ component FOIA are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
+        description = "Fetch a normalized record from one source by source ID or URL. CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, and FBI Vault are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,
@@ -557,6 +557,7 @@ mod tests {
             "pursue",
             "doj_epstein",
             "doj_foia",
+            "fbi_vault",
             "frus",
             "dtic",
             "noaa",
@@ -566,9 +567,9 @@ mod tests {
 
         let error = validate_source("state-dept").expect_err("unknown source should fail");
         assert!(error.message.contains("invalid source"));
-        assert!(error
-            .message
-            .contains("cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, noaa"));
+        assert!(error.message.contains(
+            "cia, nara, govinfo, pursue, doj_epstein, doj_foia, frus, dtic, noaa, fbi_vault"
+        ));
     }
 
     #[test]

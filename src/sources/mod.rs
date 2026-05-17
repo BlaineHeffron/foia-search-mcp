@@ -1,6 +1,7 @@
 pub mod cia;
 pub mod doj_epstein;
 pub mod doj_foia;
+pub mod fbi_vault;
 pub mod govinfo;
 pub mod nara;
 pub mod pursue;

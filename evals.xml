@@ -75,4 +75,8 @@
     <question>Find a DOJ component FOIA/disclosure lead from the OIP all-components index, then fetch one component record and report provenance and citation context.</question>
     <expected>Call list_sources, then search_source with source "doj_foia" using a component-oriented query; call get_source_record for one returned doj_foia id/URL; report component name, disclosure category/provenance from the OIP index, official component URL, and citation/terms guidance including PDF-preferred ingestion and conservative HTML/other asset handling.</expected>
   </eval>
+  <eval id="20">
+    <question>Find an FBI Vault multipart file lead, fetch the record, and report citation plus part-order metadata for safe sourcing.</question>
+    <expected>Call list_sources, then search_source with source "fbi_vault"; call get_source_record for one returned fbi_vault slug/URL; report official Vault page/PDF URL, citation/terms notes, and multipart metadata (collection_name, vault_slug/path, part_number or part_count, asset_count/pdf_asset_count) with a warning to verify part ordering and page boundaries before publication.</expected>
+  </eval>
 </evals>

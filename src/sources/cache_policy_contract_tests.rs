@@ -1,7 +1,8 @@
 use super::{
     cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
-    govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter, CachePolicy, SearchOptions,
-    SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+    fbi_vault::FbiVaultAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, pursue::PursueAdapter,
+    CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture,
+    SourceRecord, SourceStatus,
 };
 
 struct DummyAdapter;
@@ -71,5 +72,11 @@ fn doj_epstein_adapter_cache_policy_remains_respect_source_headers() {
 #[test]
 fn doj_foia_adapter_cache_policy_remains_respect_source_headers() {
     let adapter = DojFoiaAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn fbi_vault_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = FbiVaultAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }

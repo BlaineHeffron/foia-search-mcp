@@ -99,6 +99,12 @@ impl Config {
                 note: "DOJ component FOIA/disclosure adapter is available from the OIP all-components index; cite official component pages and prefer PDF assets while treating HTML/other links as conservative metadata leads.".to_string(),
             },
             SourceStatus {
+                name: "fbi_vault".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "FBI Vault adapter is available for official vault.fbi.gov search/file pages and multipart PDF asset leads; preserve part-order metadata and cite official Vault page/PDF URLs.".to_string(),
+            },
+            SourceStatus {
                 name: "frus".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
@@ -242,6 +248,27 @@ mod tests {
         assert_eq!(doj_foia.status, "available");
         assert!(doj_foia.note.contains("OIP all-components index"));
         assert!(doj_foia.note.contains("prefer PDF assets"));
+    }
+
+    #[test]
+    fn source_status_reports_fbi_vault_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let fbi_vault = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "fbi_vault")
+            .expect("fbi_vault source should be listed");
+
+        assert_eq!(fbi_vault.status, "available");
+        assert!(fbi_vault.note.contains("vault.fbi.gov"));
+        assert!(fbi_vault.note.contains("part-order metadata"));
     }
 
     #[test]
