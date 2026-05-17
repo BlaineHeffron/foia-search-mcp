@@ -24,4 +24,6 @@ pub use source_plan::{
     plan_source_ingestion, PlannedSourceAsset, SourceIngestionPlan, SourcePlanError,
     SourcePlanMetadata,
 };
-pub use worker::{IngestionWorkerHandle, QueuedIngestionWorker, WorkerError};
+pub use worker::{
+    IngestionWorkerHandle, IngestionWorkerKick, QueuedIngestionWorker, WorkerError, WorkerKickError,
+};

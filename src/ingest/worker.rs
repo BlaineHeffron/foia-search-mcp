@@ -27,8 +27,31 @@ pub enum WorkerError {
 }
 
 pub struct IngestionWorkerHandle {
-    shutdown: Option<mpsc::Sender<()>>,
+    control: Option<mpsc::Sender<WorkerCommand>>,
     join: Option<thread::JoinHandle<()>>,
+}
+
+#[derive(Clone)]
+pub struct IngestionWorkerKick {
+    control: mpsc::Sender<WorkerCommand>,
+}
+
+#[derive(Debug)]
+pub enum WorkerKickError {
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum WorkerCommand {
+    Kick,
+    Shutdown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkerWait {
+    Kick,
+    Shutdown,
+    Timeout,
 }
 
 impl QueuedIngestionWorker {
@@ -41,12 +64,12 @@ impl QueuedIngestionWorker {
     }
 
     pub fn spawn(self) -> IngestionWorkerHandle {
-        let (shutdown, shutdown_rx) = mpsc::channel();
+        let (control, control_rx) = mpsc::channel();
         let join = thread::spawn(move || {
-            self.run_until_shutdown(shutdown_rx);
+            self.run_until_shutdown(control_rx);
         });
         IngestionWorkerHandle {
-            shutdown: Some(shutdown),
+            control: Some(control),
             join: Some(join),
         }
     }
@@ -69,7 +92,7 @@ impl QueuedIngestionWorker {
             .map_err(WorkerError::from)
     }
 
-    fn run_until_shutdown(self, shutdown: mpsc::Receiver<()>) {
+    fn run_until_shutdown(self, control: mpsc::Receiver<WorkerCommand>) {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -82,7 +105,7 @@ impl QueuedIngestionWorker {
         };
 
         loop {
-            if shutdown_requested(&shutdown) {
+            if shutdown_requested(&control) {
                 break;
             }
             match runtime.block_on(self.run_once()) {
@@ -96,13 +119,15 @@ impl QueuedIngestionWorker {
                     );
                 }
                 Ok(None) => {
-                    if wait_for_shutdown(&shutdown, self.poll_interval) {
+                    if wait_for_next_iteration(&control, self.poll_interval) == WorkerWait::Shutdown
+                    {
                         break;
                     }
                 }
                 Err(error) => {
                     tracing::warn!(error = %error, "queued ingestion worker iteration failed");
-                    if wait_for_shutdown(&shutdown, self.poll_interval) {
+                    if wait_for_next_iteration(&control, self.poll_interval) == WorkerWait::Shutdown
+                    {
                         break;
                     }
                 }
@@ -118,13 +143,31 @@ impl QueuedIngestionWorker {
 }
 
 impl IngestionWorkerHandle {
+    pub fn kick_handle(&self) -> Option<IngestionWorkerKick> {
+        self.control
+            .as_ref()
+            .cloned()
+            .map(|control| IngestionWorkerKick { control })
+    }
+
     pub fn shutdown(mut self) {
         self.stop();
     }
 
     fn stop(&mut self) {
-        let _ = self.shutdown.take().map(|shutdown| shutdown.send(()));
+        let _ = self
+            .control
+            .take()
+            .map(|control| control.send(WorkerCommand::Shutdown));
         let _ = self.join.take().map(|join| join.join());
+    }
+}
+
+impl IngestionWorkerKick {
+    pub fn kick(&self) -> Result<(), WorkerKickError> {
+        self.control
+            .send(WorkerCommand::Kick)
+            .map_err(|_| WorkerKickError::Stopped)
     }
 }
 
@@ -134,18 +177,25 @@ impl Drop for IngestionWorkerHandle {
     }
 }
 
-fn shutdown_requested(shutdown: &mpsc::Receiver<()>) -> bool {
-    matches!(
-        shutdown.try_recv(),
-        Ok(()) | Err(TryRecvError::Disconnected)
-    )
+fn shutdown_requested(control: &mpsc::Receiver<WorkerCommand>) -> bool {
+    loop {
+        match control.try_recv() {
+            Ok(WorkerCommand::Kick) => continue,
+            Ok(WorkerCommand::Shutdown) | Err(TryRecvError::Disconnected) => return true,
+            Err(TryRecvError::Empty) => return false,
+        }
+    }
 }
 
-fn wait_for_shutdown(shutdown: &mpsc::Receiver<()>, timeout: Duration) -> bool {
-    matches!(
-        shutdown.recv_timeout(timeout),
-        Ok(()) | Err(RecvTimeoutError::Disconnected)
-    )
+fn wait_for_next_iteration(
+    control: &mpsc::Receiver<WorkerCommand>,
+    timeout: Duration,
+) -> WorkerWait {
+    match control.recv_timeout(timeout) {
+        Ok(WorkerCommand::Kick) => WorkerWait::Kick,
+        Ok(WorkerCommand::Shutdown) | Err(RecvTimeoutError::Disconnected) => WorkerWait::Shutdown,
+        Err(RecvTimeoutError::Timeout) => WorkerWait::Timeout,
+    }
 }
 
 impl fmt::Display for WorkerError {
@@ -177,6 +227,16 @@ impl From<ExecutorError> for WorkerError {
         Self::Executor(err)
     }
 }
+
+impl fmt::Display for WorkerKickError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stopped => write!(f, "queued ingestion worker is stopped"),
+        }
+    }
+}
+
+impl std::error::Error for WorkerKickError {}
 
 #[cfg(test)]
 mod tests {
@@ -314,6 +374,34 @@ mod tests {
         assert!(first.is_some());
         assert!(second.is_none());
         assert_eq!(job_status(temp.path()), ("succeeded".to_owned(), 1));
+    }
+
+    #[test]
+    fn kick_wakes_idle_worker_wait_without_poll_timeout() {
+        let (kick, control) = mpsc::channel();
+        kick.send(WorkerCommand::Kick).expect("send kick");
+
+        let wait = wait_for_next_iteration(&control, Duration::from_secs(60));
+
+        assert_eq!(wait, WorkerWait::Kick);
+    }
+
+    #[test]
+    fn idle_worker_wait_times_out_without_kick() {
+        let (_kick, control) = mpsc::channel();
+
+        let wait = wait_for_next_iteration(&control, Duration::from_millis(1));
+
+        assert_eq!(wait, WorkerWait::Timeout);
+    }
+
+    #[test]
+    fn shutdown_takes_precedence_over_drained_kicks() {
+        let (kick, control) = mpsc::channel();
+        kick.send(WorkerCommand::Kick).expect("send kick");
+        kick.send(WorkerCommand::Shutdown).expect("send shutdown");
+
+        assert!(shutdown_requested(&control));
     }
 
     fn enqueue(data_dir: &std::path::Path) {

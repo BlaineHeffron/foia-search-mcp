@@ -11,15 +11,14 @@ use crate::{
     config::Config,
     errors::FoiaSearchError,
     index::{FtsSearch, SearchQuery},
+    ingest::IngestionWorkerKick,
+    mcp::ingestion::enqueue_ingestion_job,
     mcp::output::json_result,
     model::{
         IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit, SearchPage,
     },
     sources::{SearchOptions, SourceAdapter, SourceError, SourceStatus},
-    store::{
-        NewIngestionJob, SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob,
-        StoredPageText,
-    },
+    store::{SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob, StoredPageText},
 };
 
 const MAX_TEXT_PAGE_RANGE: u32 = 50;
@@ -99,6 +98,7 @@ pub struct FoiaSearchServer {
     tool_router: ToolRouter<Self>,
     config: Arc<Config>,
     sources: Arc<Vec<Arc<dyn SourceAdapter>>>,
+    ingestion_worker: Option<IngestionWorkerKick>,
 }
 
 #[tool_router]
@@ -184,18 +184,15 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<IngestDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = parse_document_locator(&params.document_id)?;
         let mut store = self.open_store()?;
-        let job = store
-            .create_ingestion_job(&NewIngestionJob {
-                job_key: format!("ingest:{}", params.document_id),
-                operation: "ingest".to_owned(),
-                source: locator.source,
-                source_id: Some(locator.source_id),
-                target_url: None,
-                next_action: queued_next_action("ingestion", params.force.unwrap_or(false)),
-            })
-            .map_err(store_error_to_mcp)?;
+        let job = enqueue_ingestion_job(
+            &mut store,
+            "ingest",
+            "ingestion",
+            &params.document_id,
+            params.force.unwrap_or(false),
+        )?;
+        self.kick_ingestion_worker();
         json_result(&ingestion_job_from_stored(job))
     }
 
@@ -287,18 +284,15 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<RefreshDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = parse_document_locator(&params.document_id)?;
         let mut store = self.open_store()?;
-        let job = store
-            .create_ingestion_job(&NewIngestionJob {
-                job_key: format!("refresh:{}", params.document_id),
-                operation: "refresh".to_owned(),
-                source: locator.source,
-                source_id: Some(locator.source_id),
-                target_url: None,
-                next_action: queued_next_action("refresh", params.force.unwrap_or(false)),
-            })
-            .map_err(store_error_to_mcp)?;
+        let job = enqueue_ingestion_job(
+            &mut store,
+            "refresh",
+            "refresh",
+            &params.document_id,
+            params.force.unwrap_or(false),
+        )?;
+        self.kick_ingestion_worker();
         json_result(&ingestion_job_from_stored(job))
     }
 }
@@ -312,7 +306,13 @@ impl FoiaSearchServer {
             tool_router: Self::tool_router(),
             config,
             sources,
+            ingestion_worker: None,
         }
+    }
+
+    pub(crate) fn with_ingestion_worker(mut self, worker: IngestionWorkerKick) -> Self {
+        self.ingestion_worker = Some(worker);
+        self
     }
 
     fn source_adapter(&self, source: &str) -> Result<Arc<dyn SourceAdapter>, McpError> {
@@ -336,6 +336,14 @@ impl FoiaSearchServer {
         })?;
         SqliteStore::open(db_dir.join("foia.sqlite")).map_err(store_error_to_mcp)
     }
+
+    fn kick_ingestion_worker(&self) {
+        if let Some(worker) = &self.ingestion_worker {
+            if let Err(error) = worker.kick() {
+                tracing::warn!(error = %error, "queued ingestion worker kick failed");
+            }
+        }
+    }
 }
 
 #[tool_handler]
@@ -355,7 +363,7 @@ impl ServerHandler for FoiaSearchServer {
     }
 }
 
-fn validate_source(source: &str) -> Result<(), McpError> {
+pub(crate) fn validate_source(source: &str) -> Result<(), McpError> {
     const VALID_SOURCES: &[&str] = &["cia", "nara", "govinfo", "frus", "dtic", "noaa"];
     if VALID_SOURCES.contains(&source) {
         Ok(())
@@ -367,38 +375,6 @@ fn validate_source(source: &str) -> Result<(), McpError> {
         ))
         .into_mcp_error())
     }
-}
-
-#[derive(Debug)]
-struct DocumentLocator {
-    source: String,
-    source_id: String,
-}
-
-fn parse_document_locator(document_id: &str) -> Result<DocumentLocator, McpError> {
-    let Some((source, source_id)) = document_id.split_once(':') else {
-        return Err(FoiaSearchError::InvalidRequest(
-            "document_id must use '<source>:<source_id>' format".to_owned(),
-        )
-        .into_mcp_error());
-    };
-    if source_id.trim().is_empty() {
-        return Err(FoiaSearchError::InvalidRequest(
-            "document_id source_id must not be empty".to_owned(),
-        )
-        .into_mcp_error());
-    }
-    validate_source(source)?;
-    Ok(DocumentLocator {
-        source: source.to_owned(),
-        source_id: source_id.to_owned(),
-    })
-}
-
-fn queued_next_action(operation: &str, force: bool) -> String {
-    format!(
-        "Queued for {operation}; the background worker will download assets, extract text, and index pages/chunks; force={force}."
-    )
 }
 
 fn ingestion_job_from_stored(job: StoredIngestionJob) -> IngestionJob {
@@ -556,6 +532,7 @@ fn local_document_text_from_stored(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::ingestion::{parse_document_locator, queued_next_action};
 
     #[test]
     fn text_page_range_requires_explicit_bounds() {

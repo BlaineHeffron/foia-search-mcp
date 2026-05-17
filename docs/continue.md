@@ -2,8 +2,9 @@
 
 ## Current State
 
-Working checkpoint after `49d7175` (`feat: add queued ingestion executor`).
-This session wires queued ingestion execution into the Rust MCP runtime.
+Working checkpoint after `240729e` (`feat: wire queued ingestion worker`).
+This session adds an explicit MCP enqueue-to-worker kick path so queued ingestion
+does not wait for the bounded idle polling interval when the worker is alive.
 
 Current ingestion slices now include:
 
@@ -19,6 +20,10 @@ Review fixes already included:
 - Source planning preserves full source metadata values in `metadata_json`, while still recording selected-asset planning details.
 - The default downloader no longer follows redirects implicitly; redirects fail without writing a blob or cache row.
 - MCP `ingest_document` and `refresh_document` still enqueue durable jobs and return quickly; job status output no longer says the worker is unwired.
+- MCP `ingest_document` and `refresh_document` now notify the background worker after
+  the durable job row is created. If that in-memory kick is missed or the worker is
+  stopped, the durable queue remains authoritative and bounded polling still picks
+  up the job.
 
 ## Validation Commands
 
@@ -46,11 +51,10 @@ Start with a read-only pass over these modules:
 - `src/runtime.rs`
 - `src/mcp/tools.rs`
 
-Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_SEARCH_DATA_DIR`, including behavior when `pdftotext` is missing or returns low-quality text.
+Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_SEARCH_DATA_DIR`, including immediate worker wakeup after MCP enqueue and behavior when `pdftotext` is missing or returns low-quality text.
 
 ## Next Tasks
 
-- Add an explicit worker kick path from MCP enqueue/outbox so newly queued jobs do not wait for the bounded polling interval.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Decide how local OCR fallback is selected when embedded PDF text produces quality warnings.
 - Add crash/restart coverage for executor resume using existing job stage/progress fields.

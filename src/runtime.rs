@@ -16,7 +16,10 @@ impl FoiaSearchRuntime {
         let worker =
             QueuedIngestionWorker::new(config.data_dir.clone(), sources.iter().cloned().collect())
                 .spawn();
-        let server = FoiaSearchServer::from_parts(config, sources);
+        let server = match worker.kick_handle() {
+            Some(kick) => FoiaSearchServer::from_parts(config, sources).with_ingestion_worker(kick),
+            None => FoiaSearchServer::from_parts(config, sources),
+        };
 
         Ok(Self { server, worker })
     }

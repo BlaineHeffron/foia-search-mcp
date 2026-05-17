@@ -1,3 +1,4 @@
+pub(crate) mod ingestion;
 pub mod output;
 pub mod tools;
 
