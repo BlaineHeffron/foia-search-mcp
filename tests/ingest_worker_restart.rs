@@ -1,3 +1,5 @@
+mod ingest_worker_restart_support;
+
 use foia_search::{
     ingest::QueuedIngestionWorker,
     sources::{
@@ -5,6 +7,10 @@ use foia_search::{
         SourceFuture, SourceMetadata, SourceRecord, SourceStatus,
     },
     store::{NewIngestionJob, SqliteStore},
+};
+use ingest_worker_restart_support::{
+    chunk_fts_match_count, count_text_rows_with_substring, seed_partial_local_state,
+    SingleResponseFixtureServer,
 };
 use std::fs;
 use std::io::{Read, Write};
@@ -21,8 +27,12 @@ const CHILD_DATA_DIR_ENV: &str = "FOIA_RESTART_DATA_DIR";
 const CHILD_ASSET_URL_ENV: &str = "FOIA_RESTART_ASSET_URL";
 const CHILD_MODE_FIRST: &str = "first";
 const CHILD_MODE_RESUME: &str = "resume";
+const CHILD_MODE_SEED_PARTIAL: &str = "seed-partial";
+const CHILD_MODE_RESUME_PARTIAL: &str = "resume-partial";
 const TEST_NAME: &str =
     "queued_worker_process_restart_resumes_expired_running_job_without_duplicates";
+const TEST_NAME_PARTIAL: &str =
+    "queued_worker_process_restart_replaces_seeded_partial_local_state_without_duplicates";
 const FIRST_REQUEST_SEEN_FILE: &str = "first-request-seen";
 const RELEASE_FIRST_RESPONSE_FILE: &str = "release-first-response";
 const LEASE_EXPIRY: &str = "1970-01-01T00:00:00.000Z";
@@ -50,7 +60,8 @@ fn queued_worker_process_restart_resumes_expired_running_job_without_duplicates(
 
     enqueue_job(&data_dir);
 
-    let mut first_child = spawn_child_process(CHILD_MODE_FIRST, &data_dir, &server.asset_url);
+    let mut first_child =
+        spawn_child_process(TEST_NAME, CHILD_MODE_FIRST, &data_dir, &server.asset_url);
     assert!(
         wait_for_path(&first_request_seen, Duration::from_secs(15)),
         "first child should reach blocked download request"
@@ -99,7 +110,8 @@ fn queued_worker_process_restart_resumes_expired_running_job_without_duplicates(
             .expect("expire running lease");
     }
 
-    let mut resume_child = spawn_child_process(CHILD_MODE_RESUME, &data_dir, &server.asset_url);
+    let mut resume_child =
+        spawn_child_process(TEST_NAME, CHILD_MODE_RESUME, &data_dir, &server.asset_url);
     let resume_status = resume_child.wait().expect("wait resume child");
     assert!(
         resume_status.success(),
@@ -133,10 +145,115 @@ fn queued_worker_process_restart_resumes_expired_running_job_without_duplicates(
     assert!(pages[2].text.contains("charlie page three"));
 }
 
+#[test]
+fn queued_worker_process_restart_replaces_seeded_partial_local_state_without_duplicates() {
+    if let Some(mode) = ChildMode::from_env() {
+        run_child(mode).expect("child run should execute deterministically");
+        return;
+    }
+
+    let tempdir = tempfile::tempdir().expect("create tempdir");
+    let data_dir = tempdir.path().join("data");
+    fs::create_dir_all(&data_dir).expect("create data dir");
+
+    enqueue_job(&data_dir);
+    let server = SingleResponseFixtureServer::start(fixture_text_body());
+
+    let seed_child = spawn_child_process(
+        TEST_NAME_PARTIAL,
+        CHILD_MODE_SEED_PARTIAL,
+        &data_dir,
+        &server.asset_url,
+    );
+    let seed_status = seed_child.wait_with_output().expect("wait seeded child");
+    assert!(
+        seed_status.status.success(),
+        "seed child should persist stale local rows and stage/progress state"
+    );
+
+    {
+        let store = open_store(&data_dir);
+        let running = store
+            .get_ingestion_job_record(JOB_KEY)
+            .expect("load running record after seed child");
+        assert_eq!(running.status, "running");
+        assert_eq!(running.stage, "extracting_text");
+        assert_eq!(running.attempts, 1);
+        assert_eq!(running.progress, 0.60);
+        assert_eq!(running.lease_owner.as_deref(), Some("seed-worker"));
+        assert_eq!(row_count(&store, "documents"), 1);
+        assert_eq!(row_count(&store, "assets"), 1);
+        assert_eq!(row_count(&store, "pages"), 1);
+        assert_eq!(row_count(&store, "chunks"), 1);
+        assert_eq!(row_count(&store, "chunk_fts"), 1);
+        assert_eq!(count_text_rows_with_substring(&store, "pages", "stale"), 1);
+        assert_eq!(count_text_rows_with_substring(&store, "chunks", "stale"), 1);
+    }
+
+    let mut resume_child = spawn_child_process(
+        TEST_NAME_PARTIAL,
+        CHILD_MODE_RESUME_PARTIAL,
+        &data_dir,
+        &server.asset_url,
+    );
+    let resume_status = resume_child.wait().expect("wait resume child");
+    assert!(
+        resume_status.success(),
+        "resume child should replace stale partial local persistence"
+    );
+
+    let store = open_store(&data_dir);
+    let finished = store
+        .get_ingestion_job_record(JOB_KEY)
+        .expect("load completed job");
+    assert_eq!(finished.status, "succeeded");
+    assert_eq!(finished.stage, "succeeded");
+    assert_eq!(finished.progress, 1.0);
+    assert_eq!(finished.attempts, 2);
+    assert!(finished.error.is_none());
+
+    assert_eq!(row_count(&store, "documents"), 1);
+    assert_eq!(row_count(&store, "assets"), 1);
+    assert_eq!(row_count(&store, "pages"), 3);
+    assert_eq!(row_count(&store, "chunks"), 1);
+    assert_eq!(row_count(&store, "chunk_fts"), 1);
+    assert_eq!(count_text_rows_with_substring(&store, "pages", "stale"), 0);
+    assert_eq!(count_text_rows_with_substring(&store, "chunks", "stale"), 0);
+    assert_eq!(chunk_fts_match_count(&store, "stale"), 0);
+    assert_eq!(chunk_fts_match_count(&store, "charlie"), 1);
+
+    let pages = store
+        .get_page_text("cia:CREST-restart", 1, 3)
+        .expect("page text after resume");
+    assert_eq!(pages.len(), 3);
+    assert_eq!(pages[0].text, "alpha page one text");
+    assert_eq!(pages[1].text, "bravo page two text");
+    assert_eq!(pages[2].text, "charlie page three text");
+
+    let chunk_text: String = store
+        .connection()
+        .query_row("SELECT text FROM chunks LIMIT 1", [], |row| row.get(0))
+        .expect("load chunk text");
+    assert!(chunk_text.contains("alpha page one text"));
+    assert!(!chunk_text.contains("stale"));
+
+    let description: String = store
+        .connection()
+        .query_row(
+            "SELECT description FROM documents WHERE public_id = ?1",
+            ["cia:CREST-restart"],
+            |row| row.get(0),
+        )
+        .expect("load document description");
+    assert_eq!(description, "Process-boundary restart fixture");
+}
+
 #[derive(Clone, Copy)]
 enum ChildMode {
     First,
     Resume,
+    SeedPartial,
+    ResumePartial,
 }
 
 impl ChildMode {
@@ -144,6 +261,8 @@ impl ChildMode {
         match std::env::var(CHILD_MODE_ENV).ok()?.as_str() {
             CHILD_MODE_FIRST => Some(Self::First),
             CHILD_MODE_RESUME => Some(Self::Resume),
+            CHILD_MODE_SEED_PARTIAL => Some(Self::SeedPartial),
+            CHILD_MODE_RESUME_PARTIAL => Some(Self::ResumePartial),
             _ => None,
         }
     }
@@ -152,27 +271,52 @@ impl ChildMode {
 fn run_child(mode: ChildMode) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = std::env::var(CHILD_DATA_DIR_ENV)?;
     let asset_url = std::env::var(CHILD_ASSET_URL_ENV)?;
-    let worker = QueuedIngestionWorker::new(
-        data_dir,
-        vec![Arc::new(FakeAdapter {
-            record: source_record(asset_url),
-        })],
-    );
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
 
     match mode {
         ChildMode::First => {
+            let worker = QueuedIngestionWorker::new(
+                data_dir.clone(),
+                vec![Arc::new(FakeAdapter {
+                    record: source_record(asset_url.clone()),
+                })],
+            );
             let _ = runtime.block_on(worker.run_once())?;
             Err("first child should be terminated by parent during blocked download".into())
         }
         ChildMode::Resume => {
+            let worker = QueuedIngestionWorker::new(
+                data_dir.clone(),
+                vec![Arc::new(FakeAdapter {
+                    record: source_record(asset_url.clone()),
+                })],
+            );
             let outcome = runtime.block_on(worker.run_once())?;
             if outcome.is_some() {
                 Ok(())
             } else {
                 Err("resume child did not find a claimable ingestion job".into())
+            }
+        }
+        ChildMode::SeedPartial => {
+            seed_partial_local_state(Path::new(&data_dir), JOB_KEY, LEASE_EXPIRY, &asset_url)
+                .expect("seed stale local state");
+            Ok(())
+        }
+        ChildMode::ResumePartial => {
+            let worker = QueuedIngestionWorker::new(
+                data_dir,
+                vec![Arc::new(FakeAdapter {
+                    record: source_record(asset_url),
+                })],
+            );
+            let outcome = runtime.block_on(worker.run_once())?;
+            if outcome.is_some() {
+                Ok(())
+            } else {
+                Err("resume partial child did not find a claimable ingestion job".into())
             }
         }
     }
@@ -198,10 +342,10 @@ fn open_store(data_dir: &Path) -> SqliteStore {
     SqliteStore::open(db_dir.join("foia.sqlite")).expect("open sqlite store")
 }
 
-fn spawn_child_process(mode: &str, data_dir: &Path, asset_url: &str) -> Child {
+fn spawn_child_process(test_name: &str, mode: &str, data_dir: &Path, asset_url: &str) -> Child {
     Command::new(std::env::current_exe().expect("resolve current test executable"))
         .arg("--exact")
-        .arg(TEST_NAME)
+        .arg(test_name)
         .arg("--nocapture")
         .env(CHILD_MODE_ENV, mode)
         .env(CHILD_DATA_DIR_ENV, data_dir)

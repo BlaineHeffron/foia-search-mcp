@@ -75,6 +75,22 @@ Additional checkpoint after the process-restart smoke-test slice:
   (no duplicate document/asset/page/chunk/FTS rows) without requiring live
   source HTTP or local `pdftotext`/`ocrmypdf` tooling.
 
+Additional checkpoint after the process-restart partial-persistence slice:
+
+- Extended restart coverage with a second deterministic process-boundary fixture
+  in `tests/ingest_worker_restart.rs` plus a small
+  `tests/ingest_worker_restart_support.rs` helper module to keep the main test
+  file under the Rust size gate.
+- The new fixture re-execs the test binary across child processes against a
+  shared on-disk SQLite/blob fixture where a first child seeds stale local
+  document/asset/page/chunk/FTS rows and marks the job as an expired running
+  attempt at `extracting_text` progress `0.60`.
+- A second child resumes through the real queued worker path and assertions now
+  cover stage/progress/attempts transitions, replacement of stale persisted
+  rows without duplicates, stale-term eviction from `chunk_fts`, and final page
+  content matching fixture text without live source HTTP or local OCR/PDF
+  binaries.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -124,9 +140,9 @@ Start with a read-only pass over these modules:
 - `src/runtime.rs`
 - `src/mcp/tools.rs`
 
-Then extend restart coverage beyond mid-download by adding a second process-level
-fixture for interrupted/expired jobs that already wrote partial local state,
-while preserving deterministic no-live-HTTP execution and duplicate-row guards.
+Then prioritize mid-job cancellation/interruption behavior so shutdown can mark
+in-flight work resumable immediately instead of waiting for the active executor
+iteration to finish.
 
 ## Next Tasks
 
@@ -136,9 +152,6 @@ while preserving deterministic no-live-HTTP execution and duplicate-row guards.
 - Decide whether OCR fallback incompatibility should become a recorded job
   warning. The current seam keeps embedded text silently when OCR page boundaries
   differ so citation page numbers remain tied to embedded extraction.
-- Add a second process-level restart fixture that exercises resume after partial
-  local persistence (not only mid-download blocking) while preserving
-  deterministic coordination and duplicate-row assertions.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
 - Add mid-job cancellation/interruption. Current shutdown waits for the active executor iteration to finish; it does not mark an in-flight job interrupted immediately when the MCP process is asked to stop.
 
