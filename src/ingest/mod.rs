@@ -8,6 +8,7 @@ pub mod pdf;
 pub mod pdftotext;
 pub mod pipeline;
 pub mod source_plan;
+pub mod worker;
 
 pub use chunk::{chunk_pages, Chunk, ChunkOptions, PageText};
 pub use download::{
@@ -23,3 +24,4 @@ pub use source_plan::{
     plan_source_ingestion, PlannedSourceAsset, SourceIngestionPlan, SourcePlanError,
     SourcePlanMetadata,
 };
+pub use worker::{IngestionWorkerHandle, QueuedIngestionWorker, WorkerError};

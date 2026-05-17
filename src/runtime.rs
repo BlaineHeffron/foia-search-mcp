@@ -1,0 +1,41 @@
+use crate::config::Config;
+use crate::ingest::worker::{IngestionWorkerHandle, QueuedIngestionWorker};
+use crate::mcp::tools::FoiaSearchServer;
+use crate::sources::{cia::CiaAdapter, nara::NaraAdapter, SourceAdapter};
+use std::sync::Arc;
+
+pub struct FoiaSearchRuntime {
+    server: FoiaSearchServer,
+    worker: IngestionWorkerHandle,
+}
+
+impl FoiaSearchRuntime {
+    pub fn create() -> anyhow::Result<Self> {
+        let config = Arc::new(Config::from_env());
+        let sources = Arc::new(configured_sources(&config));
+        let worker =
+            QueuedIngestionWorker::new(config.data_dir.clone(), sources.iter().cloned().collect())
+                .spawn();
+        let server = FoiaSearchServer::from_parts(config, sources);
+
+        Ok(Self { server, worker })
+    }
+
+    pub fn server(&self) -> FoiaSearchServer {
+        self.server.clone()
+    }
+
+    pub fn shutdown(self) {
+        self.worker.shutdown();
+    }
+}
+
+fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
+    vec![
+        Arc::new(CiaAdapter::from_env()),
+        Arc::new(NaraAdapter::new(
+            config.nara_api_base_url.clone(),
+            config.nara_api_key.clone(),
+        )),
+    ]
+}

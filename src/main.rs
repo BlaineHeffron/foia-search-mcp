@@ -1,4 +1,4 @@
-use foia_search::FoiaSearchServer;
+use foia_search::FoiaSearchRuntime;
 use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::EnvFilter;
 
@@ -12,9 +12,10 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("starting foia-search MCP server");
 
-    let server = FoiaSearchServer::create()?;
-    let service = server.serve(stdio()).await?;
+    let runtime = FoiaSearchRuntime::create()?;
+    let service = runtime.server().serve(stdio()).await?;
     service.waiting().await?;
+    runtime.shutdown();
 
     Ok(())
 }

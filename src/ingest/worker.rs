@@ -1,0 +1,396 @@
+use crate::ingest::{
+    ExecutorError, ExecutorJobOutcome, PdftotextExtractor, QueuedIngestionExecutor, TextExtractor,
+};
+use crate::sources::SourceAdapter;
+use crate::store::{ContentAddressedStore, SqliteStore, StoreError};
+use std::fmt;
+use std::path::PathBuf;
+use std::sync::mpsc::{self, RecvTimeoutError, TryRecvError};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+
+const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+#[derive(Clone)]
+pub struct QueuedIngestionWorker {
+    data_dir: PathBuf,
+    sources: Vec<Arc<dyn SourceAdapter>>,
+    poll_interval: Duration,
+}
+
+#[derive(Debug)]
+pub enum WorkerError {
+    Io(std::io::Error),
+    Store(StoreError),
+    Executor(ExecutorError),
+}
+
+pub struct IngestionWorkerHandle {
+    shutdown: Option<mpsc::Sender<()>>,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+impl QueuedIngestionWorker {
+    pub fn new(data_dir: impl Into<PathBuf>, sources: Vec<Arc<dyn SourceAdapter>>) -> Self {
+        Self {
+            data_dir: data_dir.into(),
+            sources,
+            poll_interval: DEFAULT_POLL_INTERVAL,
+        }
+    }
+
+    pub fn spawn(self) -> IngestionWorkerHandle {
+        let (shutdown, shutdown_rx) = mpsc::channel();
+        let join = thread::spawn(move || {
+            self.run_until_shutdown(shutdown_rx);
+        });
+        IngestionWorkerHandle {
+            shutdown: Some(shutdown),
+            join: Some(join),
+        }
+    }
+
+    pub async fn run_once(&self) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
+        self.run_once_with_extractor(&PdftotextExtractor::default())
+            .await
+    }
+
+    async fn run_once_with_extractor(
+        &self,
+        pdf_extractor: &dyn TextExtractor,
+    ) -> Result<Option<ExecutorJobOutcome>, WorkerError> {
+        let mut store = self.open_store()?;
+        let files = ContentAddressedStore::new(&self.data_dir);
+        let executor = QueuedIngestionExecutor::new("foia-ingest-worker", self.sources.clone())?;
+        executor
+            .run_next(&mut store, &files, pdf_extractor)
+            .await
+            .map_err(WorkerError::from)
+    }
+
+    fn run_until_shutdown(self, shutdown: mpsc::Receiver<()>) {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                tracing::warn!(error = %error, "queued ingestion worker runtime failed to start");
+                return;
+            }
+        };
+
+        loop {
+            if shutdown_requested(&shutdown) {
+                break;
+            }
+            match runtime.block_on(self.run_once()) {
+                Ok(Some(outcome)) => {
+                    tracing::info!(
+                        job_key = %outcome.job_key,
+                        document_key = %outcome.document_key,
+                        page_count = outcome.page_count,
+                        chunk_count = outcome.chunk_count,
+                        "queued ingestion job completed"
+                    );
+                }
+                Ok(None) => {
+                    if wait_for_shutdown(&shutdown, self.poll_interval) {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "queued ingestion worker iteration failed");
+                    if wait_for_shutdown(&shutdown, self.poll_interval) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn open_store(&self) -> Result<SqliteStore, WorkerError> {
+        let db_dir = self.data_dir.join("db");
+        std::fs::create_dir_all(&db_dir)?;
+        Ok(SqliteStore::open(db_dir.join("foia.sqlite"))?)
+    }
+}
+
+impl IngestionWorkerHandle {
+    pub fn shutdown(mut self) {
+        self.stop();
+    }
+
+    fn stop(&mut self) {
+        let _ = self.shutdown.take().map(|shutdown| shutdown.send(()));
+        let _ = self.join.take().map(|join| join.join());
+    }
+}
+
+impl Drop for IngestionWorkerHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+fn shutdown_requested(shutdown: &mpsc::Receiver<()>) -> bool {
+    matches!(
+        shutdown.try_recv(),
+        Ok(()) | Err(TryRecvError::Disconnected)
+    )
+}
+
+fn wait_for_shutdown(shutdown: &mpsc::Receiver<()>, timeout: Duration) -> bool {
+    matches!(
+        shutdown.recv_timeout(timeout),
+        Ok(()) | Err(RecvTimeoutError::Disconnected)
+    )
+}
+
+impl fmt::Display for WorkerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(err) => write!(f, "queued ingestion worker I/O error: {err}"),
+            Self::Store(err) => write!(f, "{err}"),
+            Self::Executor(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for WorkerError {}
+
+impl From<std::io::Error> for WorkerError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+impl From<StoreError> for WorkerError {
+    fn from(err: StoreError) -> Self {
+        Self::Store(err)
+    }
+}
+
+impl From<ExecutorError> for WorkerError {
+    fn from(err: ExecutorError) -> Self {
+        Self::Executor(err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingest::{ExtractedText, PageText, TextExtraction};
+    use crate::sources::{
+        CachePolicy, SearchOptions, SearchPage, SourceAsset, SourceAssetRole, SourceFuture,
+        SourceMetadata, SourceRecord, SourceStatus,
+    };
+    use crate::store::NewIngestionJob;
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::thread;
+
+    #[derive(Clone)]
+    struct FakeAdapter {
+        record: SourceRecord,
+    }
+
+    impl SourceAdapter for FakeAdapter {
+        fn name(&self) -> &'static str {
+            "cia"
+        }
+
+        fn status(&self) -> SourceStatus {
+            SourceStatus::Enabled
+        }
+
+        fn search<'a>(&'a self, _: &'a str, _: SearchOptions) -> SourceFuture<'a, SearchPage> {
+            Box::pin(async move { unreachable!("worker tests do not search") })
+        }
+
+        fn get_record<'a>(&'a self, _id_or_url: &'a str) -> SourceFuture<'a, SourceRecord> {
+            Box::pin(async move { Ok(self.record.clone()) })
+        }
+
+        fn list_assets<'a>(
+            &'a self,
+            record: &'a SourceRecord,
+        ) -> SourceFuture<'a, Vec<SourceAsset>> {
+            Box::pin(async move { Ok(record.attachments.clone()) })
+        }
+
+        fn cache_policy(&self) -> CachePolicy {
+            CachePolicy::RespectSourceHeaders
+        }
+    }
+
+    struct FakePdfExtractor;
+
+    impl TextExtractor for FakePdfExtractor {
+        fn extract_pages(&self, _path: &std::path::Path) -> Result<ExtractedText, TextExtraction> {
+            Ok(ExtractedText {
+                pages: vec![PageText {
+                    page_number: 1,
+                    text: "queued worker fixture text".to_owned(),
+                }],
+                warnings: Vec::new(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn run_once_picks_up_queued_job_after_enqueue() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        enqueue(temp.path());
+        let worker = QueuedIngestionWorker::new(
+            temp.path(),
+            vec![Arc::new(FakeAdapter {
+                record: source_record(fixture_http_url(b"%PDF worker body")),
+            })],
+        );
+
+        let outcome = worker
+            .run_once_with_extractor(&FakePdfExtractor)
+            .await
+            .expect("worker run")
+            .expect("queued job");
+
+        assert_eq!(outcome.job_key, "ingest:cia:CREST-worker");
+        assert_eq!(outcome.page_count, 1);
+        assert_eq!(job_status(temp.path()), ("succeeded".to_owned(), 1));
+    }
+
+    #[tokio::test]
+    async fn run_once_returns_none_when_no_job_is_available() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let worker = QueuedIngestionWorker::new(temp.path(), Vec::new());
+
+        let outcome = worker
+            .run_once_with_extractor(&FakePdfExtractor)
+            .await
+            .expect("idle run");
+
+        assert!(outcome.is_none());
+    }
+
+    #[tokio::test]
+    async fn run_once_marks_claimed_job_failed_when_execution_fails() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        enqueue(temp.path());
+        let worker = QueuedIngestionWorker::new(temp.path(), Vec::new());
+
+        let error = worker
+            .run_once_with_extractor(&FakePdfExtractor)
+            .await
+            .expect_err("missing source should fail");
+
+        assert!(error.to_string().contains("no source adapter registered"));
+        let (status, attempts) = job_status(temp.path());
+        assert_eq!(status, "failed");
+        assert_eq!(attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn completed_job_is_not_executed_again() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        enqueue(temp.path());
+        let worker = QueuedIngestionWorker::new(
+            temp.path(),
+            vec![Arc::new(FakeAdapter {
+                record: source_record(fixture_http_url(b"%PDF worker body")),
+            })],
+        );
+
+        let first = worker
+            .run_once_with_extractor(&FakePdfExtractor)
+            .await
+            .expect("first run");
+        let second = worker
+            .run_once_with_extractor(&FakePdfExtractor)
+            .await
+            .expect("second run");
+
+        assert!(first.is_some());
+        assert!(second.is_none());
+        assert_eq!(job_status(temp.path()), ("succeeded".to_owned(), 1));
+    }
+
+    fn enqueue(data_dir: &std::path::Path) {
+        let mut store = open_store(data_dir);
+        store
+            .create_ingestion_job(&NewIngestionJob {
+                job_key: "ingest:cia:CREST-worker".to_owned(),
+                operation: "ingest".to_owned(),
+                source: "cia".to_owned(),
+                source_id: Some("CREST-worker".to_owned()),
+                target_url: None,
+                next_action: "queued".to_owned(),
+            })
+            .expect("create job");
+    }
+
+    fn job_status(data_dir: &std::path::Path) -> (String, u32) {
+        let store = open_store(data_dir);
+        let job = store
+            .get_ingestion_job_record("ingest:cia:CREST-worker")
+            .expect("job status");
+        (job.status, job.attempts)
+    }
+
+    fn open_store(data_dir: &std::path::Path) -> SqliteStore {
+        let db_dir = data_dir.join("db");
+        std::fs::create_dir_all(&db_dir).expect("db dir");
+        SqliteStore::open(db_dir.join("foia.sqlite")).expect("store")
+    }
+
+    fn source_record(asset_url: String) -> SourceRecord {
+        SourceRecord {
+            id: "cia:CREST-worker".to_owned(),
+            document_key: "cia_CREST-worker".to_owned(),
+            source: "cia",
+            source_id: "CREST-worker".to_owned(),
+            title: "Worker Fixture".to_owned(),
+            date: None,
+            collection: Some("CREST".to_owned()),
+            record_group: None,
+            description: Some("worker test".to_owned()),
+            origin_url: "https://www.cia.gov/readingroom/document/CREST-worker".to_owned(),
+            document_url: "https://www.cia.gov/readingroom/document/CREST-worker".to_owned(),
+            pdf_url: Some(asset_url.clone()),
+            metadata: SourceMetadata::new(),
+            attachments: vec![SourceAsset {
+                asset_url,
+                label: "PDF".to_owned(),
+                mime_type: Some("application/pdf".to_owned()),
+                role: SourceAssetRole::Pdf,
+            }],
+            text_preview: None,
+            citation_note: Some("cite source".to_owned()),
+            terms_note: Some("terms".to_owned()),
+        }
+    }
+
+    fn fixture_http_url(body: &'static [u8]) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture server");
+        let addr = listener.local_addr().expect("fixture addr");
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                read_http_request(&mut stream);
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                )
+                .expect("write response headers");
+                stream.write_all(body).expect("write response body");
+            }
+        });
+        format!("http://{addr}/fixture.pdf")
+    }
+
+    fn read_http_request(stream: &mut TcpStream) {
+        let mut buf = [0_u8; 1024];
+        let _ = stream.read(&mut buf);
+    }
+}

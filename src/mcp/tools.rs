@@ -15,9 +15,7 @@ use crate::{
     model::{
         IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit, SearchPage,
     },
-    sources::{
-        cia::CiaAdapter, nara::NaraAdapter, SearchOptions, SourceAdapter, SourceError, SourceStatus,
-    },
+    sources::{SearchOptions, SourceAdapter, SourceError, SourceStatus},
     store::{
         NewIngestionJob, SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob,
         StoredPageText,
@@ -105,24 +103,6 @@ pub struct FoiaSearchServer {
 
 #[tool_router]
 impl FoiaSearchServer {
-    pub fn create() -> anyhow::Result<Self> {
-        let config = Config::from_env();
-        tracing::info!(data_dir = %config.data_dir.display(), "initialized foia-search config");
-        let sources: Vec<Arc<dyn SourceAdapter>> = vec![
-            Arc::new(CiaAdapter::from_env()),
-            Arc::new(NaraAdapter::new(
-                config.nara_api_base_url.clone(),
-                config.nara_api_key.clone(),
-            )),
-        ];
-
-        Ok(Self {
-            tool_router: Self::tool_router(),
-            config: Arc::new(config),
-            sources: Arc::new(sources),
-        })
-    }
-
     #[tool(
         description = "List FOIA/declassified-document sources, their implementation status, and configuration notes. Use this before search_source when choosing where to search."
     )]
@@ -199,9 +179,7 @@ impl FoiaSearchServer {
         }
     }
 
-    #[tool(
-        description = "Start a resumable ingestion job for a source document. Future implementation will download assets, extract/OCR text, persist provenance, and index pages/chunks."
-    )]
+    #[tool(description = "Start a resumable queued ingestion job for a source document.")]
     async fn ingest_document(
         &self,
         Parameters(params): Parameters<IngestDocumentParams>,
@@ -326,6 +304,17 @@ impl FoiaSearchServer {
 }
 
 impl FoiaSearchServer {
+    pub(crate) fn from_parts(
+        config: Arc<Config>,
+        sources: Arc<Vec<Arc<dyn SourceAdapter>>>,
+    ) -> Self {
+        Self {
+            tool_router: Self::tool_router(),
+            config,
+            sources,
+        }
+    }
+
     fn source_adapter(&self, source: &str) -> Result<Arc<dyn SourceAdapter>, McpError> {
         validate_source(source)?;
         self.sources
@@ -408,7 +397,7 @@ fn parse_document_locator(document_id: &str) -> Result<DocumentLocator, McpError
 
 fn queued_next_action(operation: &str, force: bool) -> String {
     format!(
-        "Queued for {operation} pipeline; asset download, text extraction, OCR fallback, and indexing are pending; force={force}."
+        "Queued for {operation}; the background worker will download assets, extract text, and index pages/chunks; force={force}."
     )
 }
 
@@ -421,9 +410,6 @@ fn ingestion_job_from_stored(job: StoredIngestionJob) -> IngestionJob {
     let mut next_actions = Vec::new();
     if let Some(next_action) = job.next_action {
         next_actions.push(next_action);
-    }
-    if job.status == "queued" {
-        next_actions.push("Pipeline worker is not wired yet; queued job is durable and resumable once ingestion execution is implemented.".to_owned());
     }
     if next_actions.is_empty() {
         next_actions.push(format!("Current stage is '{}'.", job.stage));
@@ -660,7 +646,7 @@ mod tests {
         assert!(response
             .next_actions
             .iter()
-            .any(|action| action.contains("durable and resumable")));
+            .any(|action| action.contains("background worker")));
         assert_eq!(
             response.errors,
             vec![
