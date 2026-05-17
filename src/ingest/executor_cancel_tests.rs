@@ -1,6 +1,7 @@
 use crate::ingest::{
     CancellationCheckpoint, CancellationSignal, CancellationToken, ChunkOptions, ExecutorError,
-    ExtractedText, PageText, QueuedIngestionExecutor, TextExtraction, TextExtractor,
+    ExtractedText, PageText, QueuedIngestionExecutor, SourcePlanError, TextExtraction,
+    TextExtractor,
 };
 use crate::sources::{
     CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceAssetRole,
@@ -164,6 +165,106 @@ async fn cancellation_before_persistence_interrupts_without_partial_rows() {
     assert_eq!(job.status, "interrupted");
     assert_eq!(job.stage, "persisting_document");
     assert_eq!(job.progress, 0.80);
+    assert_eq!(row_count(&store, "documents"), 0);
+    assert_eq!(row_count(&store, "assets"), 0);
+    assert_eq!(row_count(&store, "pages"), 0);
+    assert_eq!(row_count(&store, "chunks"), 0);
+}
+
+#[tokio::test]
+async fn cancellation_after_source_resolution_is_resumable() {
+    let asset_url = fixture_http_url(b"%PDF cancel after source resolution");
+    let mut store = SqliteStore::open_memory().expect("open store");
+    let files_dir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(files_dir.path());
+    enqueue(&mut store);
+    let executor =
+        fixture_executor(asset_url).with_chunk_options(ChunkOptions { target_tokens: 3 });
+    let cancellation = StepCancellation::at(2);
+
+    let error = executor
+        .run_next_with_ocr_and_cancel(
+            &mut store,
+            &files,
+            &FixturePdfExtractor,
+            &FixturePdfExtractor,
+            &cancellation,
+        )
+        .await
+        .expect_err("checkpoint cancellation should interrupt after source resolution");
+    assert!(matches!(
+        error,
+        ExecutorError::Cancelled {
+            checkpoint: CancellationCheckpoint::AfterSourceResolution
+        }
+    ));
+
+    let interrupted = store
+        .get_ingestion_job_record("ingest:cia:CREST-cancel")
+        .expect("interrupted job");
+    assert_eq!(interrupted.status, "interrupted");
+    assert_eq!(interrupted.stage, "resolving_source_record");
+    assert_eq!(interrupted.progress, 0.10);
+    assert_eq!(interrupted.attempts, 1);
+    assert_eq!(row_count(&store, "documents"), 0);
+    assert_eq!(row_count(&store, "pages"), 0);
+    assert_eq!(row_count(&store, "chunks"), 0);
+
+    let resumed = executor
+        .run_next(&mut store, &files, &FixturePdfExtractor)
+        .await
+        .expect("resume should succeed")
+        .expect("interrupted job should be reclaimed");
+    assert_eq!(resumed.page_count, 2);
+    assert_eq!(resumed.chunk_count, 2);
+
+    let job = store
+        .get_ingestion_job_record("ingest:cia:CREST-cancel")
+        .expect("resumed job");
+    assert_eq!(job.status, "succeeded");
+    assert_eq!(job.attempts, 2);
+    assert_eq!(row_count(&store, "documents"), 1);
+    assert_eq!(row_count(&store, "pages"), 2);
+    assert_eq!(row_count(&store, "chunks"), 2);
+}
+
+#[tokio::test]
+async fn planning_failure_advances_to_planning_progress() {
+    let mut record = source_record("https://example.test/page.jpg".to_owned());
+    record.pdf_url = None;
+    record.attachments = vec![SourceAsset {
+        asset_url: "https://example.test/page.jpg".to_owned(),
+        label: "Page image".to_owned(),
+        mime_type: Some("image/jpeg".to_owned()),
+        role: SourceAssetRole::Image,
+    }];
+    let mut store = SqliteStore::open_memory().expect("open store");
+    let files_dir = tempfile::tempdir().expect("tempdir");
+    let files = ContentAddressedStore::new(files_dir.path());
+    enqueue(&mut store);
+    let executor =
+        QueuedIngestionExecutor::new("planning-worker", vec![Arc::new(FakeAdapter { record })])
+            .expect("executor");
+
+    let error = executor
+        .run_next(&mut store, &files, &FixturePdfExtractor)
+        .await
+        .expect_err("non-ingestible assets should fail planning");
+
+    assert!(matches!(
+        error,
+        ExecutorError::Plan(SourcePlanError::NoIngestibleAsset { .. })
+    ));
+    let job = store
+        .get_ingestion_job_record("ingest:cia:CREST-cancel")
+        .expect("failed job");
+    assert_eq!(job.status, "failed");
+    assert_eq!(job.stage, "failed");
+    assert_eq!(job.progress, 0.20);
+    assert!(job
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("no ingestible PDF")));
     assert_eq!(row_count(&store, "documents"), 0);
     assert_eq!(row_count(&store, "assets"), 0);
     assert_eq!(row_count(&store, "pages"), 0);

@@ -21,6 +21,7 @@ pub mod pipeline;
 pub(crate) mod process;
 pub mod redirect;
 pub mod source_plan;
+pub(crate) mod source_resolution;
 pub mod worker;
 #[cfg(test)]
 mod worker_cancel_tests;

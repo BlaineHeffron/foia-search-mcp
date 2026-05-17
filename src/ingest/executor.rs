@@ -4,7 +4,7 @@ use crate::ingest::{
     ocr::{NoopOcrExtractor, OcrFallbackPolicy},
     pdf_text::select_pdf_text_with_cancel,
     pipeline::ingest_extracted_text,
-    source_plan::plan_source_ingestion,
+    source_resolution::{plan_resolved_source_ingestion, resolve_source_record},
     AssetDownloadRequest, AssetDownloader, ChunkOptions, DownloadError, IngestError,
     IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtraction, TextExtractor,
     TextFileExtractor,
@@ -189,8 +189,7 @@ impl QueuedIngestionExecutor {
             0.10,
             Some("Resolving source record through configured adapter."),
         )?;
-        let mut record = adapter.get_record(id_or_url).await?;
-        record.attachments = adapter.list_assets(&record).await?;
+        let resolved = resolve_source_record(adapter.as_ref(), id_or_url).await?;
         self.check_cancellation(cancellation, CancellationCheckpoint::AfterSourceResolution)?;
 
         store.mark_ingestion_job_stage(
@@ -200,7 +199,7 @@ impl QueuedIngestionExecutor {
             0.20,
             Some("Selecting ingestible asset and building normalized document plan."),
         )?;
-        let plan = plan_source_ingestion(&record, adapter.cache_policy())?;
+        let plan = plan_resolved_source_ingestion(resolved)?;
         self.check_cancellation(cancellation, CancellationCheckpoint::AfterPlanning)?;
         let source_asset = planned_asset_to_source_asset(&plan.asset);
         let cache_policy = store_cache_policy(plan.cache_policy.clone());
@@ -413,6 +412,16 @@ impl From<DownloadError> for ExecutorError {
 impl From<IngestError> for ExecutorError {
     fn from(err: IngestError) -> Self {
         Self::Ingest(err)
+    }
+}
+
+impl From<crate::ingest::source_resolution::SourceResolutionError> for ExecutorError {
+    fn from(err: crate::ingest::source_resolution::SourceResolutionError) -> Self {
+        match err {
+            crate::ingest::source_resolution::SourceResolutionError::Source(error) => {
+                Self::Source(error)
+            }
+        }
     }
 }
 

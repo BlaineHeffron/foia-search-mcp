@@ -136,6 +136,21 @@ Additional checkpoint after the download-cache boundary slice:
   focused helper tests now cover header-driven do-not-persist policy and cache
   row deletion for do-not-persist persistence.
 
+Additional checkpoint after the source-resolution await boundary slice:
+
+- Added a dedicated `src/ingest/source_resolution.rs` helper that resolves
+  source records (`get_record`), resolves adapter-declared assets
+  (`list_assets`), and hands the resolved record to the synchronous
+  `SourceIngestionPlan` builder before document/download persistence work.
+- `QueuedIngestionExecutor` now calls the helper between explicit durable stage
+  updates (`resolving_source_record` -> `planning_ingestion`), keeping the
+  source HTTP/listing awaits isolated from blocking store mutations and making
+  the remaining non-`Send` boundary easier to reason about.
+- Added focused cancellation/resume coverage in
+  `src/ingest/executor_cancel_tests.rs` proving interruption at
+  `AfterSourceResolution` keeps durable stage/progress, leaves no partial local
+  rows, and resumes idempotently on reclaim.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -150,6 +165,8 @@ Current ingestion slices now include:
   or installed `pdftotext`/`ocrmypdf` tools in tests.
 - Split download cache persistence boundaries so queued execution no longer
   holds the SQLite cache borrow across the async download await.
+- Isolated source record resolution/asset listing awaits into a dedicated
+  source-resolution boundary helper before synchronous planning.
 
 Review fixes already included:
 
@@ -201,10 +218,11 @@ Then pick the next ingestion hardening item from the task list below.
 - Add explicit redirect-follow policy if a future source requires redirects; validate each hop before enabling it.
 - Add a later `tesseract` backend only if needed; the backend config now has a
   small enum shape that can support another local OCR backend.
-- Next hardening step for `Send` executor work: isolate remaining `SqliteStore`
-  borrows from async source HTTP awaits (source record resolution and asset
-  listing) and sketch the smallest viable boundary for blocking store sections
-  before attempting runtime-threading changes.
+- Next `Send` hardening step: sketch and trial the smallest boundary that keeps
+  `&mut SqliteStore` out of futures containing any await points (likely by
+  separating claim/stage/persist blocking sections from async network/extract
+  sections), then evaluate whether the executor future can be made `Send`
+  without changing runtime threading yet.
 
 ## Constraints
 
