@@ -21,8 +21,11 @@ The Rust MCP server is now the primary implementation target. The TypeScript cod
 - `get_document`: return normalized metadata and provenance for an ingested local document.
 - `get_document_text`: return extracted/OCR text for an explicit one-based page range of at most 50 pages.
 - `refresh_document`: create a queued refresh job for a local/source-prefixed document.
+- `report_derived_artifact_drift`: report drift in derived `text/` and `ocr/` artifacts without writing.
+- `plan_derived_artifact_repairs`: plan missing/stale rewrites and orphan manual-review actions without writing.
+- `apply_derived_artifact_repairs`: apply missing/stale derived-artifact rewrites from SQLite after explicit confirmation; orphaned artifacts remain manual-review only.
 
-Derived `text/` and `ocr/` artifact reconciliation exists internally in the Rust server for report/plan/apply workflows, but it is not exposed as an operator-facing MCP or CLI command yet. The runtime does not auto-repair those artifacts on startup or in background workers.
+Derived `text/` and `ocr/` artifact reconciliation is exposed through explicit operator-facing MCP report/plan/apply tools. The runtime does not auto-repair those artifacts on startup or in background workers.
 
 ## Rust Run
 
