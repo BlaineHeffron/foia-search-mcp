@@ -13,8 +13,8 @@ The Rust MCP server is now the primary implementation target. The TypeScript cod
 ## Rust MCP Tools
 
 - `list_sources`: list configured FOIA/declassified-document sources, implementation status, and caveats.
-- `search_source`: search one external source. CIA is wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
-- `get_source_record`: fetch one normalized source record by source ID or canonical URL. CIA and configured NARA are wired.
+- `search_source`: search one external source. CIA and GovInfo are wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. CIA, GovInfo, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
 - `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
@@ -105,6 +105,8 @@ Rust:
 - `FOIA_SEARCH_CIA_BASE_URL`: defaults to `https://www.cia.gov`.
 - `FOIA_SEARCH_NARA_API_KEY`: required for NARA adapter requests.
 - `FOIA_SEARCH_NARA_API_BASE_URL`: defaults to `https://catalog.archives.gov/api/v2`.
+- `FOIA_SEARCH_GOVINFO_API_KEY`: optional GovInfo API key. Defaults to `DEMO_KEY`.
+- `FOIA_SEARCH_GOVINFO_API_BASE_URL`: defaults to `https://api.govinfo.gov`.
 - `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
   set to `on_quality_warning` to allow local OCR when embedded PDF text has
   quality warnings or embedded extraction fails.

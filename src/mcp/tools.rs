@@ -45,7 +45,7 @@ struct GetSourceRecordParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct IngestDocumentParams {
-    #[schemars(description = "Document ID such as cia:CREST-... or nara:123456")]
+    #[schemars(description = "Document ID such as cia:CREST-..., nara:123456, or govinfo:PKG")]
     document_id: String,
     #[schemars(description = "Force re-fetching source assets even if already cached")]
     force: Option<bool>,
@@ -128,6 +128,9 @@ impl FoiaSearchServer {
                     "nara" => {
                         "Set FOIA_SEARCH_NARA_API_KEY before calling the NARA adapter.".to_owned()
                     }
+                    "govinfo" => {
+                        "GovInfo adapter is wired for Search Service queries and package/granule summary fetches; API response caching follows source headers.".to_owned()
+                    }
                     _ => status.note.clone(),
                 };
             }
@@ -136,7 +139,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA is wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. CIA and GovInfo are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -166,7 +169,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. CIA is wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
+        description = "Fetch a normalized record from one source by source ID or URL. CIA and GovInfo are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,

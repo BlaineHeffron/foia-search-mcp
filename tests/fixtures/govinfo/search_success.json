@@ -1,0 +1,49 @@
+{
+  "count": 2,
+  "offsetMark": "AoE/sample-next-offset",
+  "results": [
+    {
+      "title": "United States reports, Supreme Court",
+      "packageId": "USREPORTS-99",
+      "lastModified": "2025-07-17T18:04:43Z",
+      "governmentAuthor": [
+        "Government Publishing Office"
+      ],
+      "dateIssued": "1879-01-01",
+      "collectionCode": "USREPORTS",
+      "dateIngested": "2025-07-17",
+      "download": {
+        "premisLink": "https://api.govinfo.gov/packages/USREPORTS-99/premis",
+        "txtLink": "https://api.govinfo.gov/packages/USREPORTS-99/txt",
+        "zipLink": "https://api.govinfo.gov/packages/USREPORTS-99/zip",
+        "modsLink": "https://api.govinfo.gov/packages/USREPORTS-99/mods",
+        "xmlLink": "https://api.govinfo.gov/packages/USREPORTS-99/xml",
+        "pdfLink": "https://api.govinfo.gov/packages/USREPORTS-99/pdf"
+      },
+      "relatedLink": null,
+      "resultLink": "https://api.govinfo.gov/packages/USREPORTS-99/summary"
+    },
+    {
+      "title": "Interview With Brit Hume of FOX News",
+      "packageId": "WCPD-2009-01-19",
+      "granuleId": "WCPD-2009-01-19-Pg36",
+      "lastModified": "2025-10-27T14:46:32Z",
+      "governmentAuthor": [
+        "National Archives and Records Administration",
+        "Office of the Federal Register"
+      ],
+      "dateIssued": "2009-01-07",
+      "collectionCode": "CPD",
+      "dateIngested": "2010-08-03",
+      "download": {
+        "premisLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/premis",
+        "txtLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/htm",
+        "zipLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/zip",
+        "modsLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/mods",
+        "pdfLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf"
+      },
+      "relatedLink": null,
+      "resultLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/summary"
+    }
+  ]
+}

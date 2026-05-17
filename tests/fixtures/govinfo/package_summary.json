@@ -1,0 +1,22 @@
+{
+  "branch": "Judicial",
+  "category": "United States Reports",
+  "collectionCode": "USREPORTS",
+  "collectionName": "United States Reports",
+  "dateIssued": "1879-01-01",
+  "detailsLink": "https://www.govinfo.gov/app/details/USREPORTS-99",
+  "docClass": "USREPORTS",
+  "download": {
+    "premisLink": "https://api.govinfo.gov/packages/USREPORTS-99/premis",
+    "txtLink": "https://api.govinfo.gov/packages/USREPORTS-99/txt",
+    "zipLink": "https://api.govinfo.gov/packages/USREPORTS-99/zip",
+    "modsLink": "https://api.govinfo.gov/packages/USREPORTS-99/mods",
+    "xmlLink": "https://api.govinfo.gov/packages/USREPORTS-99/xml",
+    "pdfLink": "https://api.govinfo.gov/packages/USREPORTS-99/pdf"
+  },
+  "granulesLink": "https://api.govinfo.gov/packages/USREPORTS-99/granules?offsetMark=*&pageSize=100",
+  "lastModified": "2025-07-17T18:04:43Z",
+  "packageId": "USREPORTS-99",
+  "pages": "1068",
+  "title": "United States reports, Supreme Court : cases argued and adjudged"
+}

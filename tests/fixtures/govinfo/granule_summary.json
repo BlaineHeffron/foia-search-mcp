@@ -1,0 +1,24 @@
+{
+  "category": "Weekly Compilation of Presidential Documents",
+  "collectionCode": "WCPD",
+  "collectionName": "Weekly Compilation of Presidential Documents",
+  "dateIssued": "2009-01-19",
+  "detailsLink": "https://www.govinfo.gov/app/details/WCPD-2009-01-19/WCPD-2009-01-19-Pg36",
+  "docClass": "WCPD",
+  "download": {
+    "premisLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/premis",
+    "txtLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/htm",
+    "zipLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/zip",
+    "modsLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/mods",
+    "xmlLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/xml",
+    "pdfLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf"
+  },
+  "granuleClass": "WCPD",
+  "granuleId": "WCPD-2009-01-19-Pg36",
+  "granulesLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules?offsetMark=*&pageSize=100",
+  "lastModified": "2025-10-27T14:46:32Z",
+  "packageId": "WCPD-2009-01-19",
+  "packageLink": "https://api.govinfo.gov/packages/WCPD-2009-01-19/summary",
+  "relatedLink": null,
+  "title": "Interview With Brit Hume of FOX News"
+}

@@ -223,6 +223,18 @@ Additional checkpoint after the GovInfo tracer registration slice:
 - Updated `Config::source_status()` GovInfo note/status to reflect
   `manual_tracer` behavior and official API link preference (PDF/XML/MODS).
 
+Additional checkpoint after the GovInfo live API adapter slice:
+
+- Replaced the disabled/manual GovInfo tracer with a live API adapter using the
+  official Search Service and package/granule summary endpoints.
+- Added deterministic loopback HTTP tests and GovInfo fixtures for search,
+  empty results, package summary, granule summary, invalid HTML/source-changed
+  responses, and redirect denial.
+- GovInfo remains on the default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`.
+- Updated user-facing source status/tool wording so `list_sources`,
+  `search_source`, and `get_source_record` no longer describe GovInfo as manual.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -289,8 +301,9 @@ Then pick the next ingestion hardening item from the task list below.
 ## Next Tasks
 
 - Phase 8 source expansion should prioritize official sources broadly, not only
-  the original GovInfo/FRUS/NOAA/DTIC list. Current source-adapter todo order:
-  GovInfo live API, PURSUE/`war.gov` UAP releases, DOJ Epstein Library, DOJ
+  the original GovInfo/FRUS/NOAA/DTIC list. After the GovInfo live API adapter,
+  current source-adapter todo order:
+  PURSUE/`war.gov` UAP releases, DOJ Epstein Library, DOJ
   component FOIA/disclosure indexes, FBI Vault, AARO UAP historical records,
   FRUS, NOAA Institutional Repository, then DTIC. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
