@@ -291,10 +291,9 @@ Additional checkpoint after the derived-artifact reconciliation slice:
 - SQLite remains canonical for normalized metadata, page text, chunks, job
   state, and FTS rows. Reconciliation does not mutate canonical DB rows or
   blobs, does not delete orphaned artifacts automatically, and is not wired
-  into runtime/startup/worker/MCP auto-repair yet.
-- The remaining product/design decision is whether any operator-facing
-  MCP/tool/CLI surface should expose these internal repair APIs; future
-  index-artifact reconciliation stays a separate follow-on slice.
+  into runtime/startup/worker auto-repair. Operator-facing MCP tools now expose
+  report/plan/apply reconciliation, with apply gated by explicit confirmation.
+- Future index-artifact reconciliation remains a separate follow-on slice.
 
 ## Validation Commands
 
@@ -315,11 +314,10 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 
 ## First Action Next Session
 
-Start with a read-only pass over `src/ingest/reconcile.rs` and the current
-runtime/MCP wiring decision points only if you need to decide whether the
-internal repair APIs should ever be exposed. Do not add automatic repair to
-startup; if no operator-facing surface is justified, keep the repair APIs
-internal and move on to index-artifact reconciliation planning.
+Start with a read-only pass over `src/ingest/reconcile.rs` and MCP
+report/plan/apply behavior to decide follow-on guardrails/evals. Do not add
+automatic repair to startup or worker paths; keep repair actions explicit and
+operator-confirmed, then move on to index-artifact reconciliation planning.
 
 ## Next Tasks
 
@@ -341,10 +339,10 @@ internal and move on to index-artifact reconciliation planning.
   hop validation mandatory and preserve the current default-deny posture.
 - Add a later `tesseract` backend only if a concrete source/OCR need appears;
   the backend config already has a small enum shape for another local backend.
-- Derived-artifact repair stays an internal ingest capability for now. The next
-  product/design decision is whether to expose it through any operator-facing
-  MCP/tool/CLI surface; keep runtime/startup/worker wiring untouched until that
-  decision is made.
+- Derived-artifact repair is exposed through operator-facing MCP
+  report/plan/apply tools. Keep runtime/startup/worker auto-repair wiring
+  untouched, and focus follow-on work on guardrails/evals and index-artifact
+  reconciliation.
 
 ## Constraints
 

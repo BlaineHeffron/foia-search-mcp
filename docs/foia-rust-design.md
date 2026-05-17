@@ -473,7 +473,7 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - What is the acceptable cache policy for NARA-derived metadata in this project?
 - Should semantic/vector search be deferred until after GovInfo/FRUS/NOAA adapters are implemented?
 - What source-warning contract should sensitive collections such as DOJ Epstein use so privacy/victim-identification cautions persist through search, ingestion, and local retrieval?
-- Should derived-artifact reconciliation stay internal, or should a future operator-facing MCP/tool/CLI surface expose it?
+- What additional guardrails and evals should ship for the exposed operator-facing MCP report/plan/apply reconciliation surface?
 
 ## Reference Notes
 
