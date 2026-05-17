@@ -101,6 +101,56 @@ pub struct LocalSearchHit {
     pub snippet: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedArtifactRepairIssue {
+    pub kind: String,
+    pub issue: String,
+    pub path: String,
+    pub page_number: Option<u32>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedArtifactRepairReportResponse {
+    pub document_id: String,
+    pub document_key: String,
+    pub issue_count: usize,
+    pub issues: Vec<DerivedArtifactRepairIssue>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedArtifactRepairAction {
+    pub kind: String,
+    pub action: String,
+    pub path: String,
+    pub page_number: Option<u32>,
+    pub reason: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedArtifactRepairPlanResponse {
+    pub document_id: String,
+    pub document_key: String,
+    pub action_count: usize,
+    pub rewrite_count: usize,
+    pub manual_review_count: usize,
+    pub actions: Vec<DerivedArtifactRepairAction>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedArtifactRepairApplyResponse {
+    pub document_id: String,
+    pub document_key: String,
+    pub issue_count: usize,
+    pub rewritten: usize,
+    pub already_current: usize,
+    pub skipped_manual_review: usize,
+    pub next_actions: Vec<String>,
+}
+
 impl From<crate::sources::SourceRecord> for SourceRecord {
     fn from(record: crate::sources::SourceRecord) -> Self {
         let metadata_json = serde_json::to_value(record.metadata).unwrap_or(Value::Null);

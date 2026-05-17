@@ -12,16 +12,20 @@ use crate::{
     errors::FoiaSearchError,
     index::{FtsSearch, SearchQuery},
     ingest::IngestionWorkerKick,
-    mcp::ingestion::enqueue_ingestion_job,
     mcp::output::json_result,
-    model::{
-        IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit, SearchPage,
+    mcp::{
+        ingestion::enqueue_ingestion_job,
+        repair,
+        support::{
+            document_lookup_error_to_mcp, ingestion_job_error_to_mcp, ingestion_job_from_stored,
+            local_document_from_stored, local_document_text_from_stored, source_error_to_mcp,
+            store_error_to_mcp, validate_source, validate_text_page_range,
+        },
     },
-    sources::{SearchOptions, SourceAdapter, SourceError, SourceStatus},
-    store::{SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob, StoredPageText},
+    model::{LocalSearchHit, SearchPage},
+    sources::{SearchOptions, SourceAdapter, SourceStatus},
+    store::{ContentAddressedStore, SqliteStore},
 };
-
-const MAX_TEXT_PAGE_RANGE: u32 = 50;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
@@ -89,6 +93,28 @@ struct GetDocumentTextParams {
     page_start: Option<u32>,
     #[schemars(description = "Last page to return, one-based and inclusive")]
     page_end: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ReportDerivedArtifactDriftParams {
+    #[schemars(description = "Local or source-prefixed document ID to inspect")]
+    document_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct PlanDerivedArtifactRepairsParams {
+    #[schemars(description = "Local or source-prefixed document ID to inspect")]
+    document_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ApplyDerivedArtifactRepairsParams {
+    #[schemars(description = "Local or source-prefixed document ID to repair")]
+    document_id: String,
+    #[schemars(
+        description = "Explicit confirmation string: apply derived artifact repairs for <document_id>"
+    )]
+    confirmation: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -276,6 +302,53 @@ impl FoiaSearchServer {
     }
 
     #[tool(
+        description = "Report derived text and OCR artifact drift for one local document without writing anything."
+    )]
+    async fn report_derived_artifact_drift(
+        &self,
+        Parameters(params): Parameters<ReportDerivedArtifactDriftParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let files = self.open_files();
+        let response = repair::report_derived_artifact_drift(&store, &files, &params.document_id)
+            .map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(
+        description = "Plan derived artifact repairs for one local document without writing anything."
+    )]
+    async fn plan_derived_artifact_repairs(
+        &self,
+        Parameters(params): Parameters<PlanDerivedArtifactRepairsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let files = self.open_files();
+        let response = repair::plan_derived_artifact_repairs(&store, &files, &params.document_id)
+            .map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(
+        description = "Apply derived artifact repairs for one local document. This requires explicit confirmation string 'apply derived artifact repairs for <document_id>'."
+    )]
+    async fn apply_derived_artifact_repairs(
+        &self,
+        Parameters(params): Parameters<ApplyDerivedArtifactRepairsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let files = self.open_files();
+        let response = repair::apply_derived_artifact_repairs(
+            &store,
+            &files,
+            &params.document_id,
+            &params.confirmation,
+        )
+        .map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(
         description = "Refresh a locally ingested document from its source by creating a durable queued ingestion job."
     )]
     async fn refresh_document(
@@ -335,6 +408,10 @@ impl FoiaSearchServer {
         SqliteStore::open(db_dir.join("foia.sqlite")).map_err(store_error_to_mcp)
     }
 
+    fn open_files(&self) -> ContentAddressedStore {
+        ContentAddressedStore::new(&self.config.data_dir)
+    }
+
     fn kick_ingestion_worker(&self) {
         if let Some(worker) = &self.ingestion_worker {
             if let Err(error) = worker.kick() {
@@ -361,166 +438,12 @@ impl ServerHandler for FoiaSearchServer {
     }
 }
 
-pub(crate) fn validate_source(source: &str) -> Result<(), McpError> {
-    crate::mcp::sources::validate_source_name(source)
-}
-
-fn ingestion_job_from_stored(job: StoredIngestionJob) -> IngestionJob {
-    let document_id = job
-        .source_id
-        .as_ref()
-        .map(|source_id| format!("{}:{source_id}", job.source))
-        .or(job.target_url.clone());
-    let mut next_actions = Vec::new();
-    if let Some(next_action) = job.next_action {
-        next_actions.push(next_action);
-    }
-    if next_actions.is_empty() {
-        next_actions.push(format!("Current stage is '{}'.", job.stage));
-    }
-
-    let mut errors = Vec::new();
-    if let Some(error) = job.error {
-        errors.push(error);
-    }
-    errors.extend(job.warnings);
-
-    IngestionJob {
-        id: job.job_key,
-        status: job.status,
-        document_id,
-        progress: job.progress as f32,
-        next_actions,
-        errors,
-    }
-}
-
-fn source_error_to_mcp(error: SourceError) -> McpError {
-    let message = error.to_string();
-    match error {
-        SourceError::InvalidInput { .. } => McpError::invalid_params(message, None),
-        SourceError::SourceChanged { .. } | SourceError::Fetch { .. } => {
-            McpError::internal_error(message, None)
-        }
-    }
-}
-
-fn store_error_to_mcp(error: StoreError) -> McpError {
-    McpError::internal_error(error.to_string(), None)
-}
-
-fn ingestion_job_error_to_mcp(error: StoreError) -> McpError {
-    match error {
-        StoreError::MissingIngestionJob(_) => McpError::invalid_params(error.to_string(), None),
-        other => McpError::internal_error(other.to_string(), None),
-    }
-}
-
-fn document_lookup_error_to_mcp(error: StoreError) -> McpError {
-    match error {
-        StoreError::MissingDocument(_)
-        | StoreError::MissingPages { .. }
-        | StoreError::InvalidPageRange(_) => McpError::invalid_params(error.to_string(), None),
-        other => McpError::internal_error(other.to_string(), None),
-    }
-}
-
-fn validate_text_page_range(
-    page_start: Option<u32>,
-    page_end: Option<u32>,
-) -> Result<(u32, u32), McpError> {
-    let (Some(page_start), Some(page_end)) = (page_start, page_end) else {
-        return Err(FoiaSearchError::InvalidRequest(
-            "page_start and page_end are required to avoid unbounded full-text retrieval"
-                .to_string(),
-        )
-        .into_mcp_error());
-    };
-    if page_start == 0 || page_end == 0 {
-        return Err(FoiaSearchError::InvalidRequest(
-            "page_start and page_end must be one-based".to_string(),
-        )
-        .into_mcp_error());
-    }
-    if page_start > page_end {
-        return Err(FoiaSearchError::InvalidRequest(
-            "page_start must be less than or equal to page_end".to_string(),
-        )
-        .into_mcp_error());
-    }
-    if page_end - page_start + 1 > MAX_TEXT_PAGE_RANGE {
-        return Err(FoiaSearchError::InvalidRequest(format!(
-            "page range is too large; request at most {MAX_TEXT_PAGE_RANGE} pages"
-        ))
-        .into_mcp_error());
-    }
-    Ok((page_start, page_end))
-}
-
-fn local_document_from_stored(document: StoredDocumentMetadata) -> Result<LocalDocument, McpError> {
-    let metadata_json = serde_json::from_str(&document.metadata_json)
-        .map_err(FoiaSearchError::from)
-        .map_err(FoiaSearchError::into_mcp_error)?;
-    Ok(LocalDocument {
-        id: document.public_id.clone(),
-        document_key: document.document_key.to_string(),
-        public_id: document.public_id,
-        title: document.title,
-        source: document.source,
-        source_id: document.source_id,
-        date: document.date,
-        collection: document.collection,
-        record_group: document.record_group,
-        description: document.description,
-        origin_url: document.origin_url,
-        document_url: document.document_url,
-        pdf_url: document.pdf_url,
-        metadata_json,
-        citation_note: document.citation_note,
-        terms_note: document.terms_note,
-        page_count: document.page_count,
-        warnings: Vec::new(),
-    })
-}
-
-fn local_document_text_from_stored(
-    document: StoredDocumentMetadata,
-    page_start: u32,
-    page_end: u32,
-    pages: Vec<StoredPageText>,
-) -> LocalDocumentText {
-    let document_key = document.document_key.to_string();
-    let text = pages
-        .iter()
-        .map(|page| format!("[page {}]\n{}", page.page_number, page.text))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let pages = pages
-        .into_iter()
-        .map(|page| LocalPageText {
-            page_number: page.page_number,
-            citation: format!("{document_key}#page={}", page.page_number),
-            text_source: page.text_source,
-            text: page.text,
-        })
-        .collect();
-
-    LocalDocumentText {
-        document_key,
-        public_id: document.public_id,
-        title: document.title,
-        page_start,
-        page_end,
-        pages,
-        text,
-        warnings: Vec::new(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mcp::ingestion::{parse_document_locator, queued_next_action};
+    use crate::mcp::support::MAX_TEXT_PAGE_RANGE;
+    use crate::store::{StoredDocumentMetadata, StoredIngestionJob, StoredPageText};
 
     #[test]
     fn text_page_range_requires_explicit_bounds() {

@@ -44,7 +44,7 @@ pub(crate) fn parse_document_locator(document_id: &str) -> Result<DocumentLocato
         )
         .into_mcp_error());
     }
-    super::tools::validate_source(source)?;
+    super::support::validate_source(source)?;
     Ok(DocumentLocator {
         source: source.to_owned(),
         source_id: source_id.to_owned(),
