@@ -1,6 +1,6 @@
 use super::{
-    cia::CiaAdapter, nara::NaraAdapter, CachePolicy, SearchOptions, SearchPage, SourceAdapter,
-    SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+    cia::CiaAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, CachePolicy, SearchOptions,
+    SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
 use crate::ingest::RedirectPolicy;
 
@@ -51,5 +51,11 @@ fn cia_adapter_redirect_policy_remains_deny_by_default() {
 #[test]
 fn nara_adapter_redirect_policy_remains_deny_by_default() {
     let adapter = NaraAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn govinfo_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = GovInfoAdapter::default();
     assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
 }

@@ -208,6 +208,21 @@ Additional checkpoint after the runtime follow-up evaluation slice:
   onto a shared multithread Tokio runtime because that would be an architecture
   change requiring broader cancellation/kick/shutdown regression coverage.
 
+Additional checkpoint after the GovInfo tracer registration slice:
+
+- Added `src/sources/govinfo.rs` as a narrow, disabled/manual tracer adapter for
+  the next planned source after CIA/NARA. The tracer intentionally does not make
+  live GovInfo API calls yet and returns actionable guidance that points callers
+  to official GovInfo Search Service and package/granule summary concepts.
+- Registered the GovInfo tracer in runtime source wiring without touching CIA or
+  NARA hotspot modules; `search_source`/`get_source_record` for `govinfo` now
+  fail fast with explicit manual-next-step guidance instead of source-unavailable.
+- Pinned GovInfo source policy contracts via focused tests so default
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny` remain locked
+  for this source while the live API slice is designed.
+- Updated `Config::source_status()` GovInfo note/status to reflect
+  `manual_tracer` behavior and official API link preference (PDF/XML/MODS).
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.

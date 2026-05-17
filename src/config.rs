@@ -77,8 +77,8 @@ impl Config {
             SourceStatus {
                 name: "govinfo".to_string(),
                 enabled: false,
-                status: "planned".to_string(),
-                note: "GovInfo adapter is planned after CIA and NARA.".to_string(),
+                status: "manual_tracer".to_string(),
+                note: "GovInfo tracer is registered in manual mode; use official GovInfo API search/package/granule links (PDF/XML/MODS) while live adapter wiring is in progress.".to_string(),
             },
             SourceStatus {
                 name: "frus".to_string(),

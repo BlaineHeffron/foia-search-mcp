@@ -1,4 +1,5 @@
 pub mod cia;
+pub mod govinfo;
 pub mod nara;
 
 use crate::ingest::RedirectPolicy;

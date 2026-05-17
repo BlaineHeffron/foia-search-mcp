@@ -1,6 +1,6 @@
 use super::{
-    cia::CiaAdapter, nara::NaraAdapter, CachePolicy, SearchOptions, SearchPage, SourceAdapter,
-    SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+    cia::CiaAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter, CachePolicy, SearchOptions,
+    SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
 
 struct DummyAdapter;
@@ -47,4 +47,10 @@ fn cia_adapter_cache_policy_remains_respect_source_headers() {
 fn nara_adapter_cache_policy_remains_do_not_persist() {
     let adapter = NaraAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::DoNotPersist);
+}
+
+#[test]
+fn govinfo_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = GovInfoAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }
