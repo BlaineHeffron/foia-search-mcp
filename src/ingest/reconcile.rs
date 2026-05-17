@@ -1,3 +1,4 @@
+use super::reconcile_compare::{file_matches_bytes, file_matches_rendered_pages, RenderedPage};
 use crate::store::{ContentAddressedStore, DocumentKey, SqliteStore, StoreError};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -86,13 +87,12 @@ pub fn reconcile_derived_artifacts_for_document(
             ));
         }
     } else {
-        let expected_document_text = render_document_text(&expected_pages);
-        push_expected_file_issues(
+        push_expected_document_file_issues(
             &mut issues,
             DerivedArtifactKind::DocumentText,
             &document_text_path,
             None,
-            &expected_document_text,
+            &expected_pages,
         )?;
     }
 
@@ -100,22 +100,22 @@ pub fn reconcile_derived_artifacts_for_document(
     let mut expected_ocr_pages = BTreeSet::new();
     for page in &expected_pages {
         let page_path = files.derived_page_text_path(&document_key, page.page_number);
-        push_expected_file_issues(
+        push_expected_text_file_issues(
             &mut issues,
             DerivedArtifactKind::PageText,
             &page_path,
             Some(page.page_number),
-            &page.text,
+            page.text.as_bytes(),
         )?;
         expected_text_pages.insert(page.page_number);
         if page.text_source == "local_ocr" {
             let ocr_path = derived_ocr_page_text_path(files, &document_key, page.page_number);
-            push_expected_file_issues(
+            push_expected_text_file_issues(
                 &mut issues,
                 DerivedArtifactKind::OcrPageText,
                 &ocr_path,
                 Some(page.page_number),
-                &page.text,
+                page.text.as_bytes(),
             )?;
             expected_ocr_pages.insert(page.page_number);
         }
@@ -189,12 +189,34 @@ fn load_document_pages(
     Ok(pages)
 }
 
-fn render_document_text(pages: &[DocumentPage]) -> String {
-    pages
-        .iter()
-        .map(|page| format!("[page {}]\n{}", page.page_number, page.text))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+fn push_expected_text_file_issues(
+    issues: &mut Vec<DerivedArtifactIssue>,
+    kind: DerivedArtifactKind,
+    path: &Path,
+    page_number: Option<u32>,
+    expected: &[u8],
+) -> Result<(), ReconcileError> {
+    push_expected_file_issues(issues, kind, path, page_number, |path| {
+        file_matches_bytes(path, expected)
+    })
+}
+
+fn push_expected_document_file_issues(
+    issues: &mut Vec<DerivedArtifactIssue>,
+    kind: DerivedArtifactKind,
+    path: &Path,
+    page_number: Option<u32>,
+    expected_pages: &[DocumentPage],
+) -> Result<(), ReconcileError> {
+    push_expected_file_issues(issues, kind, path, page_number, |path| {
+        file_matches_rendered_pages(
+            path,
+            expected_pages.iter().map(|page| RenderedPage {
+                page_number: page.page_number,
+                text: &page.text,
+            }),
+        )
+    })
 }
 
 fn push_expected_file_issues(
@@ -202,7 +224,7 @@ fn push_expected_file_issues(
     kind: DerivedArtifactKind,
     path: &Path,
     page_number: Option<u32>,
-    expected: &str,
+    matches_expected: impl FnOnce(&Path) -> std::io::Result<bool>,
 ) -> Result<(), ReconcileError> {
     if !path.exists() {
         issues.push(missing_issue(
@@ -224,12 +246,12 @@ fn push_expected_file_issues(
         return Ok(());
     }
 
-    let actual = fs::read_to_string(path).map_err(|source| ReconcileError::Io {
-        operation: "read_to_string",
+    let matches_expected = matches_expected(path).map_err(|source| ReconcileError::Io {
+        operation: "compare_text_file",
         path: path.to_path_buf(),
         source,
     })?;
-    if actual != expected {
+    if !matches_expected {
         issues.push(stale_issue(
             kind,
             path.to_path_buf(),

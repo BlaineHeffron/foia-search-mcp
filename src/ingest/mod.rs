@@ -23,6 +23,7 @@ pub mod pdftotext;
 pub mod pipeline;
 pub(crate) mod process;
 pub mod reconcile;
+pub(crate) mod reconcile_compare;
 #[cfg(test)]
 mod reconcile_tests;
 pub mod redirect;
