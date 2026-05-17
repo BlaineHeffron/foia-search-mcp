@@ -275,7 +275,7 @@ The ingestion pipeline should be explicit and resumable:
 11. Write metadata, pages, chunks, and SQLite FTS entries in one database transaction.
 12. Return job status, warnings, citations, and next actions.
 
-Blob files, temp files, OCR outputs, and future Tantivy/LanceDB index writes cannot be committed atomically with SQLite. The job table should therefore store stage checkpoints and an outbox of pending file/index work. On startup and before each job resume, reconcile the database with the file store and indexes so partial writes can be detected, retried, or discarded.
+Blob files, temp files, OCR outputs, and future Tantivy/LanceDB index writes cannot be committed atomically with SQLite. The job table should therefore store stage checkpoints and an outbox of pending file/index work. Current startup and recovery behavior is DB-centric: queued, interrupted, and expired-running jobs are claimed from SQLite, and resume paths replace stale page/chunk/FTS rows as part of that same database workflow. Reconciliation of derived `text/`, `ocr/`, and future index artifacts with the file store remains planned future work, where partial writes can eventually be detected, retried, or discarded without changing the current SQLite-first recovery path.
 
 Extraction quality should consider empty pages, very low character count, replacement characters, repeated garbage, and whether extracted pages match the PDF page count.
 
@@ -334,7 +334,7 @@ Initial tools:
 
 Tool descriptions must tell the model when to use the tool, when not to use it, and what to do with errors. Outputs should be compact, JSON-shaped, and decision-ready. Full document text should never be returned by default.
 
-`ingest_document` should enqueue durable work and return quickly with a job ID. A bounded background worker pool owns ingestion execution, with per-source concurrency limits and a process-wide cap for OCR/PDF subprocesses. Jobs need leases or locks so only one worker advances a job at a time. On shutdown, workers should stop accepting new work, let short stages finish, mark interrupted jobs resumable, and release leases. On startup, the server should recover queued/interrupted jobs before accepting new ingestion work.
+`ingest_document` should enqueue durable work and return quickly with a job ID. A bounded background worker pool owns ingestion execution, with per-source concurrency limits and a process-wide cap for OCR/PDF subprocesses. Jobs need leases or locks so only one worker advances a job at a time. On shutdown, workers should stop accepting new work, let short stages finish, mark interrupted jobs resumable, and release leases. On startup, the server should recover queued/interrupted jobs before accepting new ingestion work. Broader file-store/index reconciliation for derived `text/`, `ocr/`, and future index artifacts is a planned follow-on step, not a current startup requirement.
 
 ## Error And Output Rules
 

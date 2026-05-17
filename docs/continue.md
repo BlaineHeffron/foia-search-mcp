@@ -226,6 +226,7 @@ Additional checkpoint after the GovInfo tracer registration slice:
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
+- Startup/recovery is currently DB-centric: the worker reclaims queued/interrupted/expired-running jobs from SQLite, and resume tests cover stale page/chunk/FTS replacement. Broader reconciliation of derived `text/`, `ocr/`, and future index artifacts remains future work.
 - Source-record planning from normalized `SourceRecord` values into ingestion documents and selected assets.
 - Bounded asset downloading into the content-addressed file store with cache provenance, ETag/Last-Modified revalidation, and `DoNotPersist` cache semantics.
 - External `pdftotext` extraction with structured command arguments, timeout handling, bounded stderr capture, temp output validation, and text-quality warnings.
