@@ -61,6 +61,20 @@ Additional checkpoint after the local `ocrmypdf` backend slice:
   `FOIA_SEARCH_OCR_MAX_STDERR_BYTES`. Tests use fake local executables and do
   not require `ocrmypdf` to be installed.
 
+Additional checkpoint after the process-restart smoke-test slice:
+
+- Added `tests/ingest_worker_restart.rs`, a deterministic process-boundary
+  integration test that re-execs the test binary as child processes against a
+  shared on-disk SQLite/blob fixture.
+- The parent process seeds a queued job, blocks the first child mid-download on
+  a controllable loopback text fixture, kills that child, expires the stale
+  running lease, then launches a second child that reclaims and drains the same
+  durable queue entry.
+- Assertions cover durable running-stage/progress visibility before restart,
+  resumed terminal success with incremented attempts, and idempotent persistence
+  (no duplicate document/asset/page/chunk/FTS rows) without requiring live
+  source HTTP or local `pdftotext`/`ocrmypdf` tooling.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -110,7 +124,9 @@ Start with a read-only pass over these modules:
 - `src/runtime.rs`
 - `src/mcp/tools.rs`
 
-Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_SEARCH_DATA_DIR`, including immediate worker wakeup after MCP enqueue, expired-running/interrupted resume after process restart, and behavior when `pdftotext` is missing or returns low-quality text.
+Then extend restart coverage beyond mid-download by adding a second process-level
+fixture for interrupted/expired jobs that already wrote partial local state,
+while preserving deterministic no-live-HTTP execution and duplicate-row guards.
 
 ## Next Tasks
 
@@ -120,8 +136,9 @@ Then validate end-to-end ingestion against a real CIA PDF in a throwaway `FOIA_S
 - Decide whether OCR fallback incompatibility should become a recorded job
   warning. The current seam keeps embedded text silently when OCR page boundaries
   differ so citation page numbers remain tied to embedded extraction.
-- Add a full process-level crash/restart smoke test once the worker can be driven
-  through a durable fixture without depending on live source HTTP.
+- Add a second process-level restart fixture that exercises resume after partial
+  local persistence (not only mid-download blocking) while preserving
+  deterministic coordination and duplicate-row assertions.
 - Consider moving executor download cache writes out of the async HTTP boundary so the executor future can be `Send`; the current runtime uses a dedicated current-thread worker to avoid moving a SQLite handle across threads.
 - Add mid-job cancellation/interruption. Current shutdown waits for the active executor iteration to finish; it does not mark an in-flight job interrupted immediately when the MCP process is asked to stop.
 

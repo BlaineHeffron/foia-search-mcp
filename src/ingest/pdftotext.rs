@@ -267,7 +267,11 @@ mod tests {
     #[cfg(unix)]
     fn write_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
-        fs::write(&path, body).expect("write fake binary");
+        {
+            let mut file = File::create(&path).expect("create fake binary");
+            file.write_all(body.as_bytes()).expect("write fake binary");
+            file.sync_all().expect("sync fake binary");
+        }
         let mut permissions = fs::metadata(&path)
             .expect("fake binary metadata")
             .permissions();
