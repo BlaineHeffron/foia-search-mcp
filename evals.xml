@@ -83,4 +83,8 @@
     <question>Find an official AARO UAP historical-record lead for KONA BLUE, fetch the normalized record, and summarize provenance.</question>
     <expected>Call list_sources, then search_source with source "aaro" and query terms like "KONA BLUE" or "UAP records"; call get_source_record for a returned aaro id/URL; report citation/terms notes, originating agency and release/review metadata, official AARO page/PDF URL, and that PDFs are ingest-preferred while image/video links remain metadata assets.</expected>
   </eval>
+  <eval id="22">
+    <question>Find a FRUS document lead about strategic arms talks, retrieve one normalized FRUS record, and summarize citation-critical provenance.</question>
+    <expected>Call list_sources, then search_source with source "frus" and a FRUS-focused query; call get_source_record using a returned frus source id or official history.state.gov URL; report document number/title, volume title, official document URL, citation note, terms note, and metadata fields for persons/places/topics plus TEI/XML and PDF links.</expected>
+  </eval>
 </evals>

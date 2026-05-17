@@ -57,6 +57,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
             "DOJ component FOIA/disclosure adapter is wired from the OIP all-components index; preserve component/category provenance and cite official component pages or PDFs."
                 .to_owned(),
         ),
+        "frus" => Some(
+            "FRUS adapter is wired for official history.state.gov catalog/detail leads; preserve volume/document citation metadata and prefer TEI/XML and PDF official assets."
+                .to_owned(),
+        ),
         "fbi_vault" => Some(
             "FBI Vault adapter is wired for official vault.fbi.gov search and file pages; preserve multipart part-order metadata and cite official Vault page/PDF URLs."
                 .to_owned(),

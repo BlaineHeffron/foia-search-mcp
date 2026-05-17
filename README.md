@@ -108,6 +108,7 @@ Rust:
 - `FOIA_SEARCH_GOVINFO_API_KEY`: optional GovInfo API key. Defaults to `DEMO_KEY`.
 - `FOIA_SEARCH_GOVINFO_API_BASE_URL`: defaults to `https://api.govinfo.gov`.
 - `FOIA_SEARCH_FBI_VAULT_BASE_URL`: defaults to `https://vault.fbi.gov`.
+- `FOIA_SEARCH_FRUS_BASE_URL`: defaults to `https://history.state.gov`.
 - `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
   set to `on_quality_warning` to allow local OCR when embedded PDF text has
   quality warnings or embedded extraction fails.

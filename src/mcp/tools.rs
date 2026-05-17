@@ -134,7 +134,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, and FBI Vault are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, and FRUS are wired for public HTTP search; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -164,7 +164,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, and FBI Vault are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
+        description = "Fetch a normalized record from one source by source ID or URL. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, and FRUS are wired for public HTTP fetch; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,

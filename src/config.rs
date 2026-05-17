@@ -113,8 +113,8 @@ impl Config {
             SourceStatus {
                 name: "frus".to_string(),
                 enabled: false,
-                status: "planned".to_string(),
-                note: "FRUS adapter is planned for document-level citations.".to_string(),
+                status: "available".to_string(),
+                note: "FRUS adapter is available for Office of the Historian catalog/detail leads with canonical history.state.gov document citations, TEI/XML metadata, and official PDF/ebook links.".to_string(),
             },
             SourceStatus {
                 name: "dtic".to_string(),
@@ -296,6 +296,27 @@ mod tests {
         assert_eq!(fbi_vault.status, "available");
         assert!(fbi_vault.note.contains("vault.fbi.gov"));
         assert!(fbi_vault.note.contains("part-order metadata"));
+    }
+
+    #[test]
+    fn source_status_reports_frus_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let frus = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "frus")
+            .expect("frus source should be listed");
+
+        assert_eq!(frus.status, "available");
+        assert!(frus.note.contains("history.state.gov"));
+        assert!(frus.note.contains("TEI/XML"));
     }
 
     #[test]
