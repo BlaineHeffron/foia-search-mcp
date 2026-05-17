@@ -25,6 +25,11 @@ pub(crate) mod process;
 pub mod reconcile;
 pub(crate) mod reconcile_compare;
 mod reconcile_repair;
+mod reconcile_repair_apply;
+#[cfg(test)]
+mod reconcile_repair_apply_support_tests;
+#[cfg(test)]
+mod reconcile_repair_apply_tests;
 #[cfg(test)]
 mod reconcile_repair_tests;
 #[cfg(test)]
@@ -59,6 +64,9 @@ pub use pipeline::{ingest_text_file, IngestDocument, IngestError, IngestOutcome}
 pub use reconcile_repair::{
     plan_derived_artifact_repairs, DerivedArtifactRepairAction, DerivedArtifactRepairPlan,
     DerivedArtifactRewriteReason,
+};
+pub use reconcile_repair_apply::{
+    apply_derived_artifact_repairs, DerivedArtifactApplyReport, RepairApplyError,
 };
 pub use redirect::{RedirectFollowPolicy, RedirectPolicy};
 pub use source_plan::{
