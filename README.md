@@ -36,7 +36,18 @@ just fmt
 just lint
 just test
 just architecture
+just ai-gates
 ```
+
+Install the repo pre-commit hook before development:
+
+```bash
+just install-hooks
+```
+
+The pre-commit hook runs AI-development gates that keep Rust modules from
+growing unchecked, block unchecked production `unwrap`/`expect`/panic-style
+calls, reject staged generated outputs, and run Rust format/lint checks.
 
 Rust MCP config example:
 

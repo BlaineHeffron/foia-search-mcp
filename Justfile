@@ -12,6 +12,12 @@ lint:
 test:
     cargo test --all-targets --all-features
 
+ai-gates:
+    scripts/ai-dev-gates.sh
+
+install-hooks:
+    scripts/install-git-hooks.sh
+
 architecture:
     @test -f docs/foia-rust-design.md
     @test -f src/main.rs

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec scripts/ai-dev-gates.sh --pre-commit

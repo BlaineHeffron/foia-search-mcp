@@ -1,0 +1,355 @@
+use crate::ingest::{
+    download::store_cache_policy,
+    pipeline::{ingest_text_file, ingest_with_extractor},
+    source_plan::plan_source_ingestion,
+    AssetDownloadRequest, AssetDownloader, ChunkOptions, DownloadError, IngestError,
+    IngestionJobLease, IngestionJobRecord, SourcePlanError, TextExtractor,
+};
+use crate::sources::{SourceAdapter, SourceAsset, SourceAssetRole, SourceError};
+use crate::store::{
+    AssetInput, AssetRole, CacheStore, ContentAddressedStore, SqliteStore, StoreError,
+};
+use std::fmt;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct QueuedIngestionExecutor {
+    owner: String,
+    lease_seconds: u32,
+    sources: Vec<Arc<dyn SourceAdapter>>,
+    downloader: AssetDownloader,
+    chunk_options: ChunkOptions,
+    force_download: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutorJobOutcome {
+    pub job_key: String,
+    pub document_key: String,
+    pub page_count: usize,
+    pub chunk_count: usize,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug)]
+pub enum ExecutorError {
+    Store(StoreError),
+    MissingSourceAdapter { source: String },
+    MissingJobLocator { job_key: String },
+    Source(SourceError),
+    Plan(SourcePlanError),
+    Download(DownloadError),
+    Ingest(IngestError),
+    AssetSizeOverflow { size_bytes: u64 },
+}
+
+impl QueuedIngestionExecutor {
+    pub fn new(
+        owner: impl Into<String>,
+        sources: Vec<Arc<dyn SourceAdapter>>,
+    ) -> Result<Self, ExecutorError> {
+        Ok(Self {
+            owner: owner.into(),
+            lease_seconds: 300,
+            sources,
+            downloader: AssetDownloader::new()?,
+            chunk_options: ChunkOptions::default(),
+            force_download: false,
+        })
+    }
+
+    pub fn with_downloader(mut self, downloader: AssetDownloader) -> Self {
+        self.downloader = downloader;
+        self
+    }
+
+    pub fn with_chunk_options(mut self, chunk_options: ChunkOptions) -> Self {
+        self.chunk_options = chunk_options;
+        self
+    }
+
+    pub fn with_force_download(mut self, force_download: bool) -> Self {
+        self.force_download = force_download;
+        self
+    }
+
+    pub async fn run_next(
+        &self,
+        store: &mut SqliteStore,
+        files: &ContentAddressedStore,
+        pdf_extractor: &dyn TextExtractor,
+    ) -> Result<Option<ExecutorJobOutcome>, ExecutorError> {
+        let lease = self.lease(store)?;
+        let Some(job) = store.claim_next_ingestion_job(&lease)? else {
+            return Ok(None);
+        };
+
+        match self
+            .execute_claimed_job(store, files, pdf_extractor, &job)
+            .await
+        {
+            Ok(outcome) => {
+                store.complete_ingestion_job(&job.job_key, &self.owner)?;
+                Ok(Some(outcome))
+            }
+            Err(error) => {
+                let message = error.to_string();
+                let _ = store.fail_ingestion_job(
+                    &job.job_key,
+                    &self.owner,
+                    &message,
+                    Some("Ingestion failed deterministically; inspect error, fix source or extractor configuration, then requeue or refresh."),
+                );
+                Err(error)
+            }
+        }
+    }
+
+    async fn execute_claimed_job(
+        &self,
+        store: &mut SqliteStore,
+        files: &ContentAddressedStore,
+        pdf_extractor: &dyn TextExtractor,
+        job: &IngestionJobRecord,
+    ) -> Result<ExecutorJobOutcome, ExecutorError> {
+        let adapter = self.source_adapter(&job.source)?;
+        let id_or_url = job
+            .source_id
+            .as_deref()
+            .or(job.target_url.as_deref())
+            .ok_or_else(|| ExecutorError::MissingJobLocator {
+                job_key: job.job_key.clone(),
+            })?;
+
+        store.mark_ingestion_job_stage(
+            &job.job_key,
+            &self.owner,
+            "resolving_source_record",
+            0.10,
+            Some("Resolving source record through configured adapter."),
+        )?;
+        let mut record = adapter.get_record(id_or_url).await?;
+        record.attachments = adapter.list_assets(&record).await?;
+
+        store.mark_ingestion_job_stage(
+            &job.job_key,
+            &self.owner,
+            "planning_ingestion",
+            0.20,
+            Some("Selecting ingestible asset and building normalized document plan."),
+        )?;
+        let plan = plan_source_ingestion(&record, adapter.cache_policy())?;
+        let source_asset = planned_asset_to_source_asset(&plan.asset);
+        let cache_policy = store_cache_policy(plan.cache_policy.clone());
+
+        store.mark_ingestion_job_stage(
+            &job.job_key,
+            &self.owner,
+            "downloading_asset",
+            0.35,
+            Some("Downloading selected asset with bounded size and explicit redirect policy."),
+        )?;
+        let downloaded = {
+            let cache = CacheStore::new(store);
+            self.downloader
+                .download(
+                    files,
+                    &cache,
+                    AssetDownloadRequest {
+                        source: adapter.name(),
+                        asset: &source_asset,
+                        cache_policy,
+                        force: self.force_download,
+                    },
+                )
+                .await?
+        };
+
+        store.mark_ingestion_job_stage(
+            &job.job_key,
+            &self.owner,
+            "extracting_text",
+            0.60,
+            Some("Extracting page text and building chunks."),
+        )?;
+        let outcome = if plan.asset.role == SourceAssetRole::Pdf {
+            ingest_with_extractor(
+                store,
+                &downloaded.path,
+                plan.document,
+                &self.chunk_options,
+                pdf_extractor,
+            )?
+        } else {
+            ingest_text_file(store, &downloaded.path, plan.document, &self.chunk_options)?
+        };
+
+        for warning in &outcome.warnings {
+            store.record_ingestion_job_warning(&job.job_key, &self.owner, warning)?;
+        }
+        store.link_ingestion_job_document(&job.job_key, &self.owner, &outcome.document_key)?;
+
+        store.mark_ingestion_job_stage(
+            &job.job_key,
+            &self.owner,
+            "persisting_asset",
+            0.90,
+            Some("Persisting asset provenance after successful document/page/chunk upsert."),
+        )?;
+        store.add_asset(&AssetInput {
+            document_key: outcome.document_key.clone(),
+            asset_url: downloaded.asset_url,
+            mime_type: downloaded.mime_type,
+            role: asset_role(downloaded.role),
+            sha256: Some(downloaded.sha256),
+            size_bytes: Some(asset_size(downloaded.size_bytes)?),
+            etag: downloaded.etag,
+            last_modified: downloaded.last_modified,
+            fetched_at: Some(sqlite_now(store)?),
+            cache_policy: Some(cache_policy_name(downloaded.cache_policy).to_owned()),
+        })?;
+
+        Ok(ExecutorJobOutcome {
+            job_key: job.job_key.clone(),
+            document_key: outcome.document_key.to_string(),
+            page_count: outcome.page_count,
+            chunk_count: outcome.chunk_count,
+            warnings: outcome.warnings,
+        })
+    }
+
+    fn source_adapter(&self, source: &str) -> Result<Arc<dyn SourceAdapter>, ExecutorError> {
+        self.sources
+            .iter()
+            .find(|adapter| adapter.name() == source)
+            .cloned()
+            .ok_or_else(|| ExecutorError::MissingSourceAdapter {
+                source: source.to_owned(),
+            })
+    }
+
+    fn lease(&self, store: &SqliteStore) -> Result<IngestionJobLease, StoreError> {
+        let (now, expires_at) = sqlite_now_and_expiry(store, self.lease_seconds)?;
+        Ok(IngestionJobLease {
+            owner: self.owner.clone(),
+            now,
+            expires_at,
+        })
+    }
+}
+
+impl fmt::Display for ExecutorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Store(err) => write!(f, "{err}"),
+            Self::MissingSourceAdapter { source } => {
+                write!(f, "no source adapter registered for queued source {source}")
+            }
+            Self::MissingJobLocator { job_key } => {
+                write!(
+                    f,
+                    "queued ingestion job {job_key} has no source_id or target_url"
+                )
+            }
+            Self::Source(err) => write!(f, "{err}"),
+            Self::Plan(err) => write!(f, "{err}"),
+            Self::Download(err) => write!(f, "{err}"),
+            Self::Ingest(err) => write!(f, "{err}"),
+            Self::AssetSizeOverflow { size_bytes } => {
+                write!(
+                    f,
+                    "downloaded asset size does not fit SQLite integer: {size_bytes}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExecutorError {}
+
+impl From<StoreError> for ExecutorError {
+    fn from(err: StoreError) -> Self {
+        Self::Store(err)
+    }
+}
+
+impl From<SourceError> for ExecutorError {
+    fn from(err: SourceError) -> Self {
+        Self::Source(err)
+    }
+}
+
+impl From<SourcePlanError> for ExecutorError {
+    fn from(err: SourcePlanError) -> Self {
+        Self::Plan(err)
+    }
+}
+
+impl From<DownloadError> for ExecutorError {
+    fn from(err: DownloadError) -> Self {
+        Self::Download(err)
+    }
+}
+
+impl From<IngestError> for ExecutorError {
+    fn from(err: IngestError) -> Self {
+        Self::Ingest(err)
+    }
+}
+
+fn planned_asset_to_source_asset(asset: &crate::ingest::PlannedSourceAsset) -> SourceAsset {
+    SourceAsset {
+        asset_url: asset.url.clone(),
+        label: asset.label.clone(),
+        mime_type: asset.mime_type.clone(),
+        role: asset.role.clone(),
+    }
+}
+
+fn asset_role(role: SourceAssetRole) -> AssetRole {
+    match role {
+        SourceAssetRole::Pdf => AssetRole::Pdf,
+        SourceAssetRole::Html => AssetRole::Html,
+        SourceAssetRole::OcrText => AssetRole::OcrText,
+        SourceAssetRole::Transcript => AssetRole::Transcript,
+        SourceAssetRole::Image => AssetRole::Image,
+        SourceAssetRole::Other => AssetRole::Other,
+    }
+}
+
+fn asset_size(size_bytes: u64) -> Result<i64, ExecutorError> {
+    i64::try_from(size_bytes).map_err(|_| ExecutorError::AssetSizeOverflow { size_bytes })
+}
+
+fn cache_policy_name(policy: crate::store::CachePolicy) -> &'static str {
+    match policy {
+        crate::store::CachePolicy::RespectSourceHeaders => "respect_source_headers",
+        crate::store::CachePolicy::DoNotPersist => "do_not_persist",
+    }
+}
+
+fn sqlite_now(store: &SqliteStore) -> Result<String, StoreError> {
+    store
+        .connection()
+        .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
+            row.get(0)
+        })
+        .map_err(StoreError::from)
+}
+
+fn sqlite_now_and_expiry(
+    store: &SqliteStore,
+    lease_seconds: u32,
+) -> Result<(String, String), StoreError> {
+    store
+        .connection()
+        .query_row(
+            "
+            SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)
+            ",
+            [format!("+{lease_seconds} seconds")],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(StoreError::from)
+}

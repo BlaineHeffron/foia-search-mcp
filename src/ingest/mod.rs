@@ -1,5 +1,8 @@
 pub mod chunk;
 pub mod download;
+pub mod executor;
+#[cfg(test)]
+mod executor_tests;
 pub mod jobs;
 pub mod pdf;
 pub mod pdftotext;
@@ -11,6 +14,8 @@ pub use download::{
     store_cache_policy, AssetDownloadRequest, AssetDownloader, DownloadCacheStatus, DownloadError,
     DownloadedAsset,
 };
+pub use executor::{ExecutorError, ExecutorJobOutcome, QueuedIngestionExecutor};
+pub use jobs::{IngestionJobLease, IngestionJobRecord};
 pub use pdf::{ExtractedText, TextExtraction, TextExtractor, TextFileExtractor};
 pub use pdftotext::{PdftotextConfig, PdftotextExtractor};
 pub use pipeline::{ingest_text_file, IngestDocument, IngestError, IngestOutcome};

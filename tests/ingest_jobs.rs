@@ -143,10 +143,18 @@ fn progress_is_monotonic_and_warnings_are_deduplicated() {
     assert_eq!(stage.progress, 0.60);
 
     store
-        .record_ingestion_job_warning("ingest:cia:CREST-005", "OCR quality below threshold")
+        .record_ingestion_job_warning(
+            "ingest:cia:CREST-005",
+            "worker-a",
+            "OCR quality below threshold",
+        )
         .expect("record warning");
     let warned = store
-        .record_ingestion_job_warning("ingest:cia:CREST-005", "OCR quality below threshold")
+        .record_ingestion_job_warning(
+            "ingest:cia:CREST-005",
+            "worker-a",
+            "OCR quality below threshold",
+        )
         .expect("record warning idempotently");
     assert_eq!(warned.warnings, vec!["OCR quality below threshold"]);
 

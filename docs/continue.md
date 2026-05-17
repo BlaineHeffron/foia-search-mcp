@@ -23,6 +23,7 @@ The checkpoint above passed these commands. Run them again before handing off or
 next slice:
 
 ```bash
+just ai-gates
 just fmt
 just lint
 just test
@@ -59,6 +60,9 @@ single-worker and deterministic before adding background concurrency.
 ## Constraints
 
 - Do not grow existing oversized files such as `src/mcp/tools.rs`; add submodules for new behavior.
+- Install hooks with `just install-hooks`; pre-commit runs `scripts/ai-dev-gates.sh --pre-commit`.
+- Keep Rust modules under the gate limits. Existing oversized modules are frozen at their current
+  line counts and must be split before adding behavior.
 - Keep source IDs out of filesystem paths; use `document_key` and content hashes for local artifacts.
 - Preserve source citation and terms notes with every ingested document.
 - Treat TypeScript as draft/reference until removed; Rust is the primary implementation target.

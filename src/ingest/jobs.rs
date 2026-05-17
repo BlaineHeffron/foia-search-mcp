@@ -11,6 +11,7 @@ pub struct IngestionJobLease {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IngestionJobRecord {
     pub job_key: String,
+    pub document_id: Option<i64>,
     pub source: String,
     pub source_id: Option<String>,
     pub target_url: Option<String>,
@@ -61,7 +62,7 @@ impl SqliteStore {
                         id
                     LIMIT 1
                 )
-                RETURNING job_key, source, source_id, target_url, status, stage, progress,
+                RETURNING job_key, document_id, source, source_id, target_url, status, stage, progress,
                           attempts, lease_owner, lease_expires_at, error, warnings, next_action
                 ",
                 params![lease.owner, lease.expires_at, next_action, lease.now],
@@ -102,7 +103,7 @@ impl SqliteStore {
                     OR (status = 'running' AND lease_owner = ?2)
                     OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?5)
                   )
-                RETURNING job_key, source, source_id, target_url, status, stage, progress,
+                RETURNING job_key, document_id, source, source_id, target_url, status, stage, progress,
                           attempts, lease_owner, lease_expires_at, error, warnings, next_action
                 ",
                 params![job_key, lease.owner, lease.expires_at, next_action, lease.now],
@@ -148,9 +149,10 @@ impl SqliteStore {
     pub fn record_ingestion_job_warning(
         &self,
         job_key: &str,
+        lease_owner: &str,
         warning: &str,
     ) -> StoreResult<IngestionJobRecord> {
-        let mut job = self.get_ingestion_job_record(job_key)?;
+        let mut job = self.require_updated_running_job(job_key, lease_owner)?;
         if !job.warnings.iter().any(|stored| stored == warning) {
             job.warnings.push(warning.to_owned());
             let warnings_json =
@@ -164,16 +166,19 @@ impl SqliteStore {
                 SET warnings = ?2,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE job_key = ?1
+                  AND status = 'running'
+                  AND lease_owner = ?3
                 ",
-                params![job_key, warnings_json],
+                params![job_key, warnings_json, lease_owner],
             )?;
         }
-        self.get_ingestion_job_record(job_key)
+        self.require_updated_running_job(job_key, lease_owner)
     }
 
     pub fn record_ingestion_job_error(
         &self,
         job_key: &str,
+        lease_owner: &str,
         error: &str,
     ) -> StoreResult<IngestionJobRecord> {
         self.connection().execute(
@@ -182,10 +187,41 @@ impl SqliteStore {
             SET error = ?2,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             WHERE job_key = ?1
+              AND status = 'running'
+              AND lease_owner = ?3
             ",
-            params![job_key, error],
+            params![job_key, error, lease_owner],
         )?;
-        self.get_ingestion_job_record(job_key)
+        self.require_updated_running_job(job_key, lease_owner)
+    }
+
+    pub fn link_ingestion_job_document(
+        &self,
+        job_key: &str,
+        lease_owner: &str,
+        document_key: &crate::store::DocumentKey,
+    ) -> StoreResult<IngestionJobRecord> {
+        self.connection().execute(
+            "
+            UPDATE ingestion_jobs
+            SET document_id = (
+                    SELECT id
+                    FROM documents
+                    WHERE document_key = ?3
+                ),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE job_key = ?1
+              AND status = 'running'
+              AND lease_owner = ?2
+            ",
+            params![job_key, lease_owner, document_key.as_str()],
+        )?;
+        let job = self.require_updated_running_job(job_key, lease_owner)?;
+        if job.document_id.is_some() {
+            Ok(job)
+        } else {
+            Err(StoreError::MissingDocument(document_key.to_string()))
+        }
     }
 
     pub fn complete_ingestion_job(
@@ -250,7 +286,7 @@ impl SqliteStore {
         self.connection()
             .query_row(
                 "
-                SELECT job_key, source, source_id, target_url, status, stage, progress,
+                SELECT job_key, document_id, source, source_id, target_url, status, stage, progress,
                        attempts, lease_owner, lease_expires_at, error, warnings, next_action
                 FROM ingestion_jobs
                 WHERE job_key = ?1
@@ -346,25 +382,26 @@ fn validate_progress(progress: f64) -> StoreResult<()> {
 }
 
 fn read_ingestion_job_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<IngestionJobRecord> {
-    let attempts: i64 = row.get(7)?;
-    let warnings_json: String = row.get(11)?;
+    let attempts: i64 = row.get(8)?;
+    let warnings_json: String = row.get(12)?;
     let warnings = serde_json::from_str::<Vec<String>>(&warnings_json).map_err(|err| {
-        rusqlite::Error::FromSqlConversionFailure(11, rusqlite::types::Type::Text, Box::new(err))
+        rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(err))
     })?;
 
     Ok(IngestionJobRecord {
         job_key: row.get(0)?,
-        source: row.get(1)?,
-        source_id: row.get(2)?,
-        target_url: row.get(3)?,
-        status: row.get(4)?,
-        stage: row.get(5)?,
-        progress: row.get(6)?,
+        document_id: row.get(1)?,
+        source: row.get(2)?,
+        source_id: row.get(3)?,
+        target_url: row.get(4)?,
+        status: row.get(5)?,
+        stage: row.get(6)?,
+        progress: row.get(7)?,
         attempts: attempts.max(0) as u32,
-        lease_owner: row.get(8)?,
-        lease_expires_at: row.get(9)?,
-        error: row.get(10)?,
+        lease_owner: row.get(9)?,
+        lease_expires_at: row.get(10)?,
+        error: row.get(11)?,
         warnings,
-        next_action: row.get(12)?,
+        next_action: row.get(13)?,
     })
 }
