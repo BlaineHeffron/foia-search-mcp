@@ -288,6 +288,20 @@ Then pick the next ingestion hardening item from the task list below.
 
 ## Next Tasks
 
+- Phase 8 source expansion should prioritize official sources broadly, not only
+  the original GovInfo/FRUS/NOAA/DTIC list. Current source-adapter todo order:
+  GovInfo live API, PURSUE/`war.gov` UAP releases, DOJ Epstein Library, DOJ
+  component FOIA/disclosure indexes, FBI Vault, AARO UAP historical records,
+  FRUS, NOAA Institutional Repository, then DTIC. Each source needs fixtures,
+  source warning/citation notes, cache and redirect policy contracts, and at
+  least one eval.
+- Treat DOJ Epstein Library as a sensitive mixed-media source. Default to
+  metadata/PDF ingestion, preserve DOJ privacy/victim-identification warnings in
+  search and local retrieval output, and list images/audio/video without
+  automatic ingestion until media safety rules are designed.
+- Treat PURSUE/`war.gov` and AARO as separate UAP source candidates unless an
+  official stable shared index appears. Prefer official release pages and linked
+  assets over mirrors or news coverage.
 - Add explicit redirect-follow policy only if a future source needs it; keep
   hop validation mandatory and preserve the current default-deny posture.
 - Add a later `tesseract` backend only if a concrete source/OCR need appears;

@@ -258,6 +258,16 @@ NOAA is fifth. Target the NOAA Institutional Repository and related technical re
 
 DTIC is sixth. Treat public DTIC as a fragile adapter until a stable official API is confirmed. Do not depend on undocumented endpoints for core functionality without clear warnings and tests.
 
+PURSUE / War Department UAP releases should be added as an official-source adapter after GovInfo or alongside the UAP-specific source batch. Target `https://www.war.gov/ufo/` and official linked release assets first. Preserve release tranche metadata, list PDFs/images/videos as assets, ingest PDFs by default, and leave images/videos metadata-only until media handling is explicitly designed.
+
+AARO UAP records should be tracked as a related official UAP source. Prefer official AARO historical-record and release pages over mirrors, preserve originating agency/release notes, and keep the adapter separate from PURSUE unless the official sites expose one stable shared index.
+
+DOJ Epstein Library should be a high-priority official source because `https://www.justice.gov/epstein` and `https://www.justice.gov/epstein/doj-disclosures` centralize materials released under the Epstein Files Transparency Act. Treat this source as sensitive: surface DOJ privacy/victim-identification warnings in source results, default to metadata/PDF ingestion only, list images/audio/video as assets without automatic ingestion, and preserve data-set/court-record/FOIA category provenance.
+
+DOJ component disclosure libraries should become a broader `doj_foia` adapter family. Start from the DOJ Office of Information Policy's "Available Documents for All DOJ Components" index, then add component-specific sub-adapters only where the source exposes stable official listing pages or APIs.
+
+FBI Vault should be a separate adapter from DOJ Epstein and DOJ OIP. Target official Vault search/listing pages, proactive disclosures, discretionary releases, and PDF file pages; keep citation/source notes explicit because Vault files may be multipart and historically uneven.
+
 ## Ingestion Pipeline
 
 The ingestion pipeline should be explicit and resumable:
@@ -370,7 +380,7 @@ Default behavior should be polite and bounded. Bulk ingestion should require exp
 
 Start with deterministic fixture tests:
 
-- Adapter parsing fixtures for CIA, NARA, GovInfo, FRUS, NOAA, and DTIC.
+- Adapter parsing fixtures for CIA, NARA, GovInfo, PURSUE/war.gov UAP, AARO, DOJ Epstein Library, DOJ component FOIA indexes, FBI Vault, FRUS, NOAA, and DTIC.
 - Cursor encoding and decoding.
 - Cache hit, stale hit, conditional GET, and 304 behavior.
 - PDF text extraction fixtures.
@@ -393,6 +403,9 @@ Coverage:
 - Search CIA, choose a record, ingest its PDF, search local text, and cite a page.
 - Search NARA with and without available-online filters, then ingest a record with digital objects.
 - Use GovInfo for a congressional hearing and retrieve a cited snippet.
+- Use PURSUE/war.gov UAP releases to find a release-tranche document and ingest an official PDF.
+- Use DOJ Epstein Library to find an EFTA data-set PDF while preserving DOJ sensitivity warnings.
+- Use FBI Vault to retrieve a multipart FOIA file with correct source provenance.
 - Use FRUS for a policy document and return source citation metadata.
 - Handle a scanned PDF that requires OCR.
 - Continue paginated source search using an opaque cursor.
@@ -435,7 +448,19 @@ Add optional OCR dependency detection, extraction-quality scoring, page-level OC
 
 ### Phase 8: Official Source Expansion
 
-Add GovInfo, FRUS, NOAA, and DTIC in that order. Each adapter must ship with fixtures, rate/cache policy, and at least one eval.
+Add as many official sources as practical while keeping each adapter policy-pinned and fixture-backed. Current priority order:
+
+1. GovInfo live API adapter.
+2. PURSUE / `war.gov` UAP release adapter.
+3. DOJ Epstein Library adapter.
+4. DOJ component FOIA/disclosure index adapter family.
+5. FBI Vault adapter.
+6. AARO UAP historical records adapter.
+7. FRUS.
+8. NOAA Institutional Repository.
+9. DTIC.
+
+Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
 
 ### Phase 9: Advanced Indexing
 
@@ -447,10 +472,16 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - Which direct-ingestion allowlists should ship as examples for trusted local development without weakening the default source-mediated path?
 - What is the acceptable cache policy for NARA-derived metadata in this project?
 - Should semantic/vector search be deferred until after GovInfo/FRUS/NOAA adapters are implemented?
+- What source-warning contract should sensitive collections such as DOJ Epstein use so privacy/victim-identification cautions persist through search, ingestion, and local retrieval?
 
 ## Reference Notes
 
 - NARA Catalog API documentation describes API-key access, rate limits, extracted text support, and cache/scrape cautions: <https://www.archives.gov/research/catalog/help/api>
 - GovInfo documents API search, packages, granules, and PDF/XML/MODS links: <https://www.govinfo.gov/features/search-service-overview>
+- PURSUE / War Department UAP releases: <https://www.war.gov/ufo/>
+- DOJ Epstein Library: <https://www.justice.gov/epstein>
+- DOJ Epstein disclosures: <https://www.justice.gov/epstein/doj-disclosures>
+- DOJ component disclosure index: <https://www.justice.gov/oip/available-documents-all-doj-components>
+- FBI Vault: <https://vault.fbi.gov/>
 - Office of the Historian documents the FRUS catalog/API and XML/TEI-backed publication model: <https://history.state.gov/developer>
 - NOAA Institutional Repository is the target entry point for NOAA-authored or NOAA-funded publications and reports: <https://repository.library.noaa.gov/>
