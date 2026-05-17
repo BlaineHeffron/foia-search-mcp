@@ -24,6 +24,9 @@ pub mod pipeline;
 pub(crate) mod process;
 pub mod reconcile;
 pub(crate) mod reconcile_compare;
+mod reconcile_repair;
+#[cfg(test)]
+mod reconcile_repair_tests;
 #[cfg(test)]
 mod reconcile_tests;
 pub mod redirect;
@@ -53,6 +56,10 @@ pub use pdf::{ExtractedText, TextExtraction, TextExtractor, TextFileExtractor};
 pub use pdf_text::{select_pdf_text, SelectedPdfText};
 pub use pdftotext::{PdftotextConfig, PdftotextExtractor};
 pub use pipeline::{ingest_text_file, IngestDocument, IngestError, IngestOutcome};
+pub use reconcile_repair::{
+    plan_derived_artifact_repairs, DerivedArtifactRepairAction, DerivedArtifactRepairPlan,
+    DerivedArtifactRewriteReason,
+};
 pub use redirect::{RedirectFollowPolicy, RedirectPolicy};
 pub use source_plan::{
     plan_source_ingestion, PlannedSourceAsset, SourceIngestionPlan, SourcePlanError,
