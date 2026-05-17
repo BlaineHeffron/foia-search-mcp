@@ -91,4 +91,8 @@
     <question>Find a NOAA Institutional Repository technical-report lead, fetch one NOAA record, and summarize citation-critical provenance.</question>
     <expected>Call list_sources, then search_source with source "noaa" and a NOAA report-oriented query; call get_source_record using a returned noaa id or official repository.library.noaa.gov URL; report official repository URL, PDF URL when present, DOI/report number and NOAA office/program metadata, plus NOAA citation and terms notes with rights/license caution.</expected>
   </eval>
+  <eval id="24">
+    <question>Resolve a DTIC accession lead safely: start from source status, fetch ADA630142, and summarize official provenance with fragility caveats.</question>
+    <expected>Call list_sources, then call get_source_record with source "dtic" and accession/official URL (for example ADA630142 or https://apps.dtic.mil/sti/citations/ADA630142); report official citation URL, PDF URL when present, accession/report metadata, and explicitly preserve DTIC fragility/distribution warnings rather than implying robust public API search coverage.</expected>
+  </eval>
 </evals>

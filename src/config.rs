@@ -119,8 +119,8 @@ impl Config {
             SourceStatus {
                 name: "dtic".to_string(),
                 enabled: false,
-                status: "planned".to_string(),
-                note: "DTIC adapter is planned and will require fragility warnings.".to_string(),
+                status: "available".to_string(),
+                note: "DTIC adapter is available in fragile accession/official-URL tracer mode; broad public search endpoints are not treated as stable APIs, so preserve DTIC fragility/distribution warnings and verify official citation/PDF URLs.".to_string(),
             },
             SourceStatus {
                 name: "noaa".to_string(),
@@ -318,6 +318,27 @@ mod tests {
         assert_eq!(frus.status, "available");
         assert!(frus.note.contains("history.state.gov"));
         assert!(frus.note.contains("TEI/XML"));
+    }
+
+    #[test]
+    fn source_status_reports_dtic_tracer_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let dtic = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "dtic")
+            .expect("dtic source should be listed");
+
+        assert_eq!(dtic.status, "available");
+        assert!(dtic.note.contains("accession/official-URL tracer mode"));
+        assert!(dtic.note.contains("broad public search endpoints"));
     }
 
     #[test]

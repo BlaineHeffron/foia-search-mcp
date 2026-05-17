@@ -13,8 +13,8 @@ The Rust MCP server is now the primary implementation target. The TypeScript cod
 ## Rust MCP Tools
 
 - `list_sources`: list configured FOIA/declassified-document sources, implementation status, and caveats.
-- `search_source`: search one external source. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, and NOAA are wired for public HTTP search; NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
-- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, and configured NARA are wired.
+- `search_source`: search one external source. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, DTIC, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
 - `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
@@ -109,6 +109,7 @@ Rust:
 - `FOIA_SEARCH_GOVINFO_API_BASE_URL`: defaults to `https://api.govinfo.gov`.
 - `FOIA_SEARCH_FBI_VAULT_BASE_URL`: defaults to `https://vault.fbi.gov`.
 - `FOIA_SEARCH_FRUS_BASE_URL`: defaults to `https://history.state.gov`.
+- `FOIA_SEARCH_DTIC_BASE_URL`: defaults to `https://apps.dtic.mil`.
 - `FOIA_SEARCH_NOAA_BASE_URL`: defaults to `https://repository.library.noaa.gov`.
 - `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
   set to `on_quality_warning` to allow local OCR when embedded PDF text has

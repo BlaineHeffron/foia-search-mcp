@@ -61,6 +61,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
             "FRUS adapter is wired for official history.state.gov catalog/detail leads; preserve volume/document citation metadata and prefer TEI/XML and PDF official assets."
                 .to_owned(),
         ),
+        "dtic" => Some(
+            "DTIC adapter is wired in fragile accession/official-URL tracer mode; broad public search endpoints are not treated as stable APIs, so verify official citation/PDF URLs and preserve distribution/public-release warnings."
+                .to_owned(),
+        ),
         "fbi_vault" => Some(
             "FBI Vault adapter is wired for official vault.fbi.gov search and file pages; preserve multipart part-order metadata and cite official Vault page/PDF URLs."
                 .to_owned(),
