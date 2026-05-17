@@ -29,6 +29,8 @@ pub mod worker;
 #[cfg(test)]
 mod worker_cancel_tests;
 pub(crate) mod worker_ocr;
+#[cfg(test)]
+mod worker_send_tests;
 
 pub use cancel::{
     ensure_not_cancelled, CancellationCheckpoint, CancellationHandle, CancellationSignal,

@@ -185,6 +185,20 @@ Additional checkpoint after the executor full-send signature slice:
 - Extended `src/ingest/executor_send_tests.rs` with a compile-time assertion for
   the full `run_next` executor future; this assertion now passes.
 
+Additional checkpoint after the runtime follow-up evaluation slice:
+
+- Evaluated the next runtime hardening step after full executor `Send` coverage
+  and kept the queued worker execution model unchanged: a dedicated worker
+  thread with a current-thread Tokio runtime still provides the smallest,
+  safest path for existing kick/poll/shutdown behavior.
+- Added `src/ingest/worker_send_tests.rs` with a compile-time `Send` assertion
+  for `QueuedIngestionWorker::run_once()` so worker future boundaries now
+  explicitly prove the executor-level `Send` property is preserved at the
+  runtime seam.
+- Remaining runtime risk: this slice intentionally does not migrate queued work
+  onto a shared multithread Tokio runtime because that would be an architecture
+  change requiring broader cancellation/kick/shutdown regression coverage.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
