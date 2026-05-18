@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::Config;
+use crate::ingest::OcrBackend;
 use crate::sources::registry::SOURCE_REGISTRY;
 
 #[derive(Debug, Clone, Serialize)]
@@ -8,6 +9,15 @@ pub struct SourceStatus {
     pub name: String,
     pub enabled: bool,
     pub status: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OcrStatus {
+    pub fallback_policy: String,
+    pub backend: String,
+    pub backend_binary: Option<String>,
+    pub enabled: bool,
     pub note: String,
 }
 
@@ -32,6 +42,38 @@ impl Config {
                 }
             })
             .collect()
+    }
+
+    pub fn ocr_status(&self) -> OcrStatus {
+        let fallback_policy = if self.ocr_fallback_policy.is_enabled() {
+            "on_quality_warning"
+        } else {
+            "off"
+        };
+        let backend = match self.ocr_backend.backend {
+            OcrBackend::None => "none",
+            OcrBackend::Ocrmypdf => "ocrmypdf",
+        };
+        let backend_binary = (self.ocr_backend.backend == OcrBackend::Ocrmypdf)
+            .then(|| self.ocr_backend.ocrmypdf_binary.display().to_string());
+        let enabled =
+            self.ocr_fallback_policy.is_enabled() && self.ocr_backend.backend.is_enabled();
+        let note = match (
+            self.ocr_fallback_policy.is_enabled(),
+            self.ocr_backend.backend,
+        ) {
+            (false, _) => "Local OCR fallback is disabled. To enable it for low-quality or failed embedded PDF text extraction, set FOIA_SEARCH_OCR_FALLBACK=on_quality_warning and FOIA_SEARCH_OCR_BACKEND=ocrmypdf; install ocrmypdf or set FOIA_SEARCH_OCRMYPDF_BIN if the binary is not on PATH.",
+            (true, OcrBackend::None) => "Local OCR fallback policy is enabled, but no OCR backend is configured. Set FOIA_SEARCH_OCR_BACKEND=ocrmypdf and install ocrmypdf or set FOIA_SEARCH_OCRMYPDF_BIN.",
+            (true, OcrBackend::Ocrmypdf) => "Local OCR fallback is enabled for low-quality or failed embedded PDF text extraction using ocrmypdf. If OCR jobs report a missing binary, install ocrmypdf or set FOIA_SEARCH_OCRMYPDF_BIN to the executable path.",
+        };
+
+        OcrStatus {
+            fallback_policy: fallback_policy.to_owned(),
+            backend: backend.to_owned(),
+            backend_binary,
+            enabled,
+            note: note.to_owned(),
+        }
     }
 }
 
@@ -125,5 +167,43 @@ mod tests {
                 source.note
             );
         }
+    }
+
+    #[test]
+    fn ocr_status_defaults_to_off_with_no_backend_guidance() {
+        let config = test_config(None);
+        let status = config.ocr_status();
+
+        assert_eq!(status.fallback_policy, "off");
+        assert_eq!(status.backend, "none");
+        assert_eq!(status.backend_binary, None);
+        assert!(!status.enabled);
+        assert!(status
+            .note
+            .contains("FOIA_SEARCH_OCR_FALLBACK=on_quality_warning"));
+        assert!(status.note.contains("FOIA_SEARCH_OCR_BACKEND=ocrmypdf"));
+    }
+
+    #[test]
+    fn ocr_status_reports_configured_policy_backend_and_binary_guidance() {
+        let mut config = test_config(None);
+        config.ocr_fallback_policy = OcrFallbackPolicy::on_quality_warning();
+        config.ocr_backend = OcrBackendConfig::from_env_values(
+            Some("ocrmypdf"),
+            Some("/usr/local/bin/ocrmypdf"),
+            None,
+            None,
+        );
+        let status = config.ocr_status();
+
+        assert_eq!(status.fallback_policy, "on_quality_warning");
+        assert_eq!(status.backend, "ocrmypdf");
+        assert_eq!(
+            status.backend_binary.as_deref(),
+            Some("/usr/local/bin/ocrmypdf")
+        );
+        assert!(status.enabled);
+        assert!(status.note.contains("missing binary"));
+        assert!(status.note.contains("FOIA_SEARCH_OCRMYPDF_BIN"));
     }
 }

@@ -18,6 +18,7 @@ use crate::{
         ingestion::enqueue_ingestion_job,
         repair,
         source_params::{LocalSourceFilter, SearchSourceName, SourceRecordSourceName},
+        status,
         support::{
             document_lookup_error_to_mcp, ingestion_job_error_to_mcp, ingestion_job_from_stored,
             local_document_from_stored, local_document_text_from_stored,
@@ -26,7 +27,7 @@ use crate::{
         },
     },
     model::SearchPage,
-    sources::{SearchOptions, SourceAdapter, SourceStatus},
+    sources::{SearchOptions, SourceAdapter},
     store::{ContentAddressedStore, SqliteStore},
 };
 
@@ -144,25 +145,10 @@ pub struct FoiaSearchServer {
 #[tool_router(vis = "pub(crate)")]
 impl FoiaSearchServer {
     #[tool(
-        description = "List FOIA/declassified-document sources, their implementation status, and configuration notes. Use this before search_source when choosing where to search."
+        description = "List FOIA/declassified-document sources, their implementation status, configuration notes, and local OCR fallback status. Use this before search_source when choosing where to search."
     )]
     async fn list_sources(&self) -> Result<CallToolResult, McpError> {
-        let mut statuses = self.config.source_status();
-        for adapter in self.sources.iter() {
-            if let Some(status) = statuses
-                .iter_mut()
-                .find(|status| status.name == adapter.name())
-            {
-                status.enabled = adapter.status() == SourceStatus::Enabled;
-                if status.enabled {
-                    status.status = "enabled".to_owned();
-                }
-                status.note =
-                    crate::mcp::sources::list_sources_note(adapter.name(), status.enabled)
-                        .unwrap_or_else(|| status.note.clone());
-            }
-        }
-        json_result(&statuses)
+        json_result(&status::list_sources_status(&self.config, &self.sources))
     }
 
     #[tool(

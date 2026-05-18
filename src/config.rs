@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::ingest::{OcrBackendConfig, OcrFallbackPolicy};
 
 mod status;
-pub use status::SourceStatus;
+pub use status::{OcrStatus, SourceStatus};
 
 const DEFAULT_DATA_DIR_NAME: &str = ".foia-search";
 

@@ -4,6 +4,7 @@ pub mod output;
 pub(crate) mod repair;
 pub(crate) mod source_params;
 pub(crate) mod sources;
+pub(crate) mod status;
 pub(crate) mod support;
 pub mod tools;
 
