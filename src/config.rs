@@ -144,6 +144,13 @@ impl Config {
                     .to_string(),
             },
             SourceStatus {
+                name: "osd_joint_staff".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "OSD/Joint Staff FOIA Reading Room adapter is available for official www.esd.whs.mil WHS/ESD OSD/Joint Staff FOIA leads; prefer PDF assets and verify page boundaries before citation."
+                    .to_string(),
+            },
+            SourceStatus {
                 name: "state".to_string(),
                 enabled: false,
                 status: "available".to_string(),
@@ -444,6 +451,27 @@ mod tests {
         assert_eq!(state.status, "available");
         assert!(state.note.contains("foia.state.gov"));
         assert!(state.note.contains("OCR"));
+    }
+
+    #[test]
+    fn source_status_reports_osd_joint_staff_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let source = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "osd_joint_staff")
+            .expect("osd_joint_staff source should be listed");
+
+        assert_eq!(source.status, "available");
+        assert!(source.note.contains("esd.whs.mil"));
+        assert!(source.note.contains("verify page boundaries"));
     }
 
     #[test]

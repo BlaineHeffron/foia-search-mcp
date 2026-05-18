@@ -10,6 +10,7 @@ pub mod govinfo;
 pub mod nara;
 pub mod noaa;
 pub mod nsa;
+pub mod osd_joint_staff;
 pub mod pursue;
 pub mod state;
 

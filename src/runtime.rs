@@ -5,7 +5,8 @@ use crate::sources::{
     aaro::AaroAdapter, cia::CiaAdapter, dia::DiaAdapter, doj_epstein::DojEpsteinAdapter,
     doj_foia::DojFoiaAdapter, dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter,
     govinfo::GovInfoAdapter, nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter,
-    pursue::PursueAdapter, state::StateAdapter, SourceAdapter,
+    osd_joint_staff::OsdJointStaffAdapter, pursue::PursueAdapter, state::StateAdapter,
+    SourceAdapter,
 };
 use std::sync::Arc;
 
@@ -59,5 +60,6 @@ fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
         Arc::new(NsaAdapter::from_env()),
         Arc::new(StateAdapter::from_env()),
         Arc::new(DiaAdapter::from_env()),
+        Arc::new(OsdJointStaffAdapter::from_env()),
     ]
 }

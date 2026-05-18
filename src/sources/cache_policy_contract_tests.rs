@@ -2,8 +2,9 @@ use super::{
     aaro::AaroAdapter, cia::CiaAdapter, dia::DiaAdapter, doj_epstein::DojEpsteinAdapter,
     doj_foia::DojFoiaAdapter, dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter,
     govinfo::GovInfoAdapter, nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter,
-    pursue::PursueAdapter, state::StateAdapter, CachePolicy, SearchOptions, SearchPage,
-    SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
+    osd_joint_staff::OsdJointStaffAdapter, pursue::PursueAdapter, state::StateAdapter, CachePolicy,
+    SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord,
+    SourceStatus,
 };
 
 struct DummyAdapter;
@@ -115,6 +116,12 @@ fn noaa_adapter_cache_policy_remains_respect_source_headers() {
 #[test]
 fn nsa_adapter_cache_policy_remains_respect_source_headers() {
     let adapter = NsaAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn osd_joint_staff_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = OsdJointStaffAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }
 

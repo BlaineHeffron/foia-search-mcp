@@ -15,6 +15,7 @@ pub(crate) const VALID_SOURCES: &[&str] = &[
     "dia",
     "noaa",
     "nsa",
+    "osd_joint_staff",
     "state",
     "fbi_vault",
 ];
@@ -82,6 +83,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
         ),
         "nsa" => Some(
             "NSA FOIA Reading Room adapter is wired for official nsa.gov Reading Room and FOIA Reports and Releases leads; prefer PDF assets and verify page boundaries before citation."
+                .to_owned(),
+        ),
+        "osd_joint_staff" => Some(
+            "OSD/Joint Staff FOIA Reading Room adapter is wired for official www.esd.whs.mil WHS/ESD OSD/Joint Staff FOIA leads; prefer PDF assets and verify page boundaries before citation."
                 .to_owned(),
         ),
         "state" => Some(

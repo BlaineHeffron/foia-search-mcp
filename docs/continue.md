@@ -276,6 +276,23 @@ Additional checkpoint after the DIA FOIA Electronic Reading Room adapter slice:
   notes warn that page citations require PDF ingestion and page-boundary
   verification.
 
+Additional checkpoint after the OSD/Joint Staff FOIA Reading Room adapter slice:
+
+- Added `src/sources/osd_joint_staff.rs` and split live helper modules for the
+  official WHS/ESD OSD/Joint Staff FOIA Reading Room entry points at
+  `https://www.esd.whs.mil/FOID/Reading-Room/` and
+  `https://www.esd.whs.mil/Records-Declass/FOIA/Reading-Room/Reading-Room-List_2/`.
+- The adapter uses the source name `osd_joint_staff` for clarity in MCP
+  validation, record IDs, and env overrides. Source search is conservative and
+  fixture-backed: it parses the official category list plus the Joint Staff
+  category listing, `get_record` accepts returned source IDs or official
+  `www.esd.whs.mil` URLs, and `list_assets` prefers PDFs while retaining official
+  HTML/non-PDF links as metadata leads.
+- OSD/Joint Staff keeps default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`. Citation
+  notes warn that page citations require PDF ingestion and page-boundary
+  verification.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -377,11 +394,10 @@ actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
-- Phase 8 source expansion is complete through the DIA FOIA Electronic
+- Phase 8 source expansion is complete through the OSD/Joint Staff FOIA
   Reading Room. If source expansion resumes, next source-adapter todo order
   should be:
-  OSD/Joint Staff reading room, Army FOIA Reading Room, then the broader Navy
-  reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
+  Army FOIA Reading Room, then the broader Navy reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
   least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to
