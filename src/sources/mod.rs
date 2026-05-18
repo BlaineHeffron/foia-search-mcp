@@ -9,6 +9,7 @@ pub mod fbi_vault;
 pub mod frus;
 pub mod govinfo;
 pub mod nara;
+pub mod navy;
 pub mod noaa;
 pub mod nsa;
 pub mod osd_joint_staff;

@@ -88,6 +88,13 @@ impl Config {
                 .to_string(),
             },
             SourceStatus {
+                name: "navy".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "Navy FOIA Reading Room adapter is available for official secnav.navy.mil Department of the Navy, Naval Audit Service, and Naval Inspector General leads; prefer PDF assets and verify page boundaries before citation."
+                    .to_string(),
+            },
+            SourceStatus {
                 name: "govinfo".to_string(),
                 enabled: false,
                 status: "available".to_string(),
@@ -247,6 +254,27 @@ mod tests {
 
         assert_eq!(source.status, "available");
         assert!(source.note.contains("foia.army.mil"));
+        assert!(source.note.contains("verify page boundaries"));
+    }
+
+    #[test]
+    fn source_status_reports_navy_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let source = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "navy")
+            .expect("navy source should be listed");
+
+        assert_eq!(source.status, "available");
+        assert!(source.note.contains("secnav.navy.mil"));
         assert!(source.note.contains("verify page boundaries"));
     }
 

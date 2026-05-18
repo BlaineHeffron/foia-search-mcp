@@ -2,7 +2,7 @@ use super::{
     aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter,
     doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter, dtic::DticAdapter,
     fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter,
-    noaa::NoaaAdapter, nsa::NsaAdapter, osd_joint_staff::OsdJointStaffAdapter,
+    navy::NavyAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, osd_joint_staff::OsdJointStaffAdapter,
     pursue::PursueAdapter, state::StateAdapter, CachePolicy, SearchOptions, SearchPage,
     SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
@@ -67,6 +67,12 @@ fn cia_adapter_redirect_policy_remains_deny_by_default() {
 #[test]
 fn nara_adapter_redirect_policy_remains_deny_by_default() {
     let adapter = NaraAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn navy_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = NavyAdapter::default();
     assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
 }
 

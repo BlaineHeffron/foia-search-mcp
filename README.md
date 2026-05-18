@@ -13,8 +13,8 @@ The Rust MCP server is the primary implementation. The old TypeScript draft has 
 ## Rust MCP Tools
 
 - `list_sources`: list configured FOIA/declassified-document sources, implementation status, and caveats.
-- `search_source`: search one external source. AARO, Army FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
-- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
+- `search_source`: search one external source. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
 - `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
@@ -92,6 +92,7 @@ For a compiled binary, set `command` to the built executable path and omit the C
 - `FOIA_SEARCH_DIA_BASE_URL`: defaults to `https://www.dia.mil`.
 - `FOIA_SEARCH_OSD_JOINT_STAFF_BASE_URL`: defaults to `https://www.esd.whs.mil`.
 - `FOIA_SEARCH_ARMY_BASE_URL`: defaults to `https://foia.army.mil`.
+- `FOIA_SEARCH_NAVY_BASE_URL`: defaults to `https://www.secnav.navy.mil`.
 - `FOIA_SEARCH_OCR_FALLBACK`: optional local OCR fallback policy. Defaults to `off`;
   set to `on_quality_warning` to allow local OCR when embedded PDF text has
   quality warnings or embedded extraction fails.

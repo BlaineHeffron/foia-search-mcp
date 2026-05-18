@@ -123,6 +123,10 @@
     <question>Search the Army FOIA Reading Room for IG report records and retrieve one official lead with citation caveats.</question>
     <expected>Call list_sources, then search_source with source "army" and a query such as "IG report"; call get_source_record using a returned army id or official foia.army.mil URL; report official Army FOIA page/document URL, citation note, terms note, asset_count/pdf_asset_count, and warn that page citations require PDF ingestion and page-boundary verification.</expected>
   </eval>
+  <eval id="navy-foia-reading-room">
+    <question>Search the Navy FOIA Reading Room family for Scorpion Submarine records and retrieve one official lead with citation caveats.</question>
+    <expected>Call list_sources, then search_source with source "navy" and a query such as "Scorpion"; call get_source_record using a returned navy id or official secnav.navy.mil URL; report official Department of the Navy page/PDF URL, citation note, terms note, asset_count/pdf_asset_count, and warn that page citations require PDF ingestion and page-boundary verification.</expected>
+  </eval>
   <eval id="28">
     <question>Inspect the local SQLite FTS index for drift, plan repairs, and apply only if the operator confirmation is available.</question>
     <expected>Call report_sqlite_fts_drift and treat it as read-only; call plan_sqlite_fts_repairs and summarize rewrite_from_canonical versus manual_review actions; do not assume automatic repair; call apply_sqlite_fts_repairs only with exact confirmation "apply sqlite fts repairs"; report rewritten/already_current/skipped_manual_review and advise re-running report or resolving manual-review orphaned chunk_fts rows separately.</expected>

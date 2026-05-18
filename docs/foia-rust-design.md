@@ -63,6 +63,7 @@ src/
     dia.rs
     osd_joint_staff.rs
     army.rs
+    navy.rs
   ingest/
     mod.rs
     jobs.rs
@@ -152,7 +153,7 @@ Core fields:
 
 - `id`: user-facing stable ID, usually `<source>:<source_id>`, never used directly as a file path.
 - `document_key`: filesystem-safe internal key used for derived text/OCR paths.
-- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, `state`, `dia`, `osd_joint_staff`, `army`, or future adapter name.
+- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, `state`, `dia`, `osd_joint_staff`, `army`, `navy`, or future adapter name.
 - `source_id`: ID from the original source.
 - `title`
 - `date`
@@ -272,6 +273,8 @@ DIA FOIA Electronic Reading Room is available as an official-source adapter for 
 OSD/Joint Staff FOIA Reading Room is available as an official-source adapter for WHS/ESD `www.esd.whs.mil` OSD/Joint Staff FOIA leads. Treat results as citation leads: preserve official WHS/ESD page/PDF provenance, prefer linked PDFs from the reading-room listings, and require PDF ingestion/page-boundary verification before page-specific citation.
 
 Army FOIA Reading Room is available as an official-source adapter for `foia.army.mil` Reading Room leads. Treat results as citation leads: preserve official Army page/document provenance, prefer linked PDFs, retain non-PDF document assets as metadata leads, and require PDF ingestion/page-boundary verification before page-specific citation.
+
+Navy FOIA Reading Room is available as a conservative official-source adapter for the `www.secnav.navy.mil` Department of the Navy FOIA reading-room family. The first slice targets the central DON FOIA Reading Room plus Naval Audit Service and Naval Inspector General pages; treat results as citation leads, prefer linked PDFs, retain non-PDF assets as metadata leads, and require PDF ingestion/page-boundary verification before page-specific citation.
 
 PURSUE / War Department UAP releases should be added as an official-source adapter after GovInfo or alongside the UAP-specific source batch. Target `https://www.war.gov/ufo/` and official linked release assets first. Preserve release tranche metadata, list PDFs/images/videos as assets, ingest PDFs by default, and leave images/videos metadata-only until media handling is explicitly designed.
 
@@ -479,6 +482,7 @@ Add as many official sources as practical while keeping each adapter policy-pinn
 11. DIA FOIA Electronic Reading Room.
 12. OSD/Joint Staff FOIA Reading Room.
 13. Army FOIA Reading Room.
+14. Navy FOIA Reading Room family.
 
 Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
 
@@ -510,3 +514,4 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - DIA FOIA Electronic Reading Room is the target entry point for DIA FOIA leads and linked FileId/PDF assets: <https://www.dia.mil/FOIA/FOIA-Electronic-Reading-Room/>
 - OSD/Joint Staff FOIA Reading Room is the target entry point for WHS/ESD OSD/Joint Staff FOIA leads and linked PDFs: <https://www.esd.whs.mil/FOID/Reading-Room/> and <https://www.esd.whs.mil/Records-Declass/FOIA/Reading-Room/Reading-Room-List_2/>
 - Army FOIA Reading Room is the target entry point for Army FOIA leads and linked documents: <https://foia.army.mil/>
+- Navy FOIA Reading Room family first slice targets official Department of the Navy SECNAV reading-room surfaces and component reading-room pages under <https://www.secnav.navy.mil/foia/readingroom/SitePages/Home.aspx>, <https://www.secnav.navy.mil/navaudsvc/foia-reading-room>, and <https://www.secnav.navy.mil/ig/Pages/foia2.aspx>.

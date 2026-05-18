@@ -383,6 +383,20 @@ Additional checkpoint after the Army FOIA Reading Room adapter slice:
 - Army keeps default source policy contracts:
   `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`.
 
+Additional checkpoint after the Navy FOIA Reading Room family adapter slice:
+
+- Added `src/sources/navy.rs` and split live helper modules for a conservative
+  official `navy` adapter targeting the Department of the Navy
+  `https://www.secnav.navy.mil/foia/readingroom/SitePages/Home.aspx` family,
+  plus Naval Audit Service and Naval Inspector General reading-room pages under
+  `secnav.navy.mil`.
+- The adapter uses deterministic fixtures for search/list parsing. `get_record`
+  accepts returned Navy source IDs or official same-origin SECNAV URLs, maps
+  direct official PDFs without a live fetch, and `list_assets` prefers PDFs
+  while retaining text/HTML/other assets as metadata leads.
+- Navy keeps default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
@@ -406,9 +420,9 @@ actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
-- Phase 8 source expansion is complete through the Army FOIA Reading Room. If
-  source expansion resumes, the next source-adapter todo order should be the
-  broader Navy reading-room family if DoD coverage still needs to expand. Each
+- Phase 8 source expansion is complete through the broader Navy reading-room
+  family. If source expansion resumes, choose the next official source based on
+  current research demand and source stability. Each
   source needs fixtures, source warning/citation notes, cache and redirect
   policy contracts, and at least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to

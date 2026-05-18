@@ -7,6 +7,7 @@ pub(crate) const VALID_SOURCES: &[&str] = &[
     "army",
     "cia",
     "nara",
+    "navy",
     "govinfo",
     "pursue",
     "doj_epstein",
@@ -50,6 +51,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
                 .to_owned(),
         ),
         "nara" => Some("Set FOIA_SEARCH_NARA_API_KEY before calling the NARA adapter.".to_owned()),
+        "navy" => Some(
+            "Navy FOIA Reading Room adapter is wired for official secnav.navy.mil Department of the Navy leads; prefer PDF assets and verify page boundaries before citation."
+                .to_owned(),
+        ),
         "govinfo" => Some(
             "GovInfo adapter is wired for Search Service queries and package/granule summary fetches; API response caching follows source headers."
                 .to_owned(),
