@@ -154,7 +154,7 @@ printf 'started' >&2
 sleep 5
 "#,
     );
-    let config = OcrmypdfConfig::new(ocrmypdf.clone(), Duration::from_millis(25), 1024);
+    let config = OcrmypdfConfig::new(ocrmypdf.clone(), Duration::from_millis(250), 1024);
     let extractor = OcrmypdfExtractor::new(config);
 
     let error = extractor

@@ -1,9 +1,9 @@
 use super::{
     aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
     dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter,
-    nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, pursue::PursueAdapter, CachePolicy,
-    SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord,
-    SourceStatus,
+    nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, pursue::PursueAdapter,
+    state::StateAdapter, CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset,
+    SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
 
 struct DummyAdapter;
@@ -109,5 +109,11 @@ fn noaa_adapter_cache_policy_remains_respect_source_headers() {
 #[test]
 fn nsa_adapter_cache_policy_remains_respect_source_headers() {
     let adapter = NsaAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn state_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = StateAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }

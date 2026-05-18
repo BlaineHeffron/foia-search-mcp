@@ -10,6 +10,7 @@ pub mod nara;
 pub mod noaa;
 pub mod nsa;
 pub mod pursue;
+pub mod state;
 
 use crate::ingest::RedirectPolicy;
 use std::collections::BTreeMap;

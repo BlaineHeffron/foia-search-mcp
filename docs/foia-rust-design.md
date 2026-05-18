@@ -59,6 +59,7 @@ src/
     dtic.rs
     noaa.rs
     nsa.rs
+    state.rs
   ingest/
     mod.rs
     jobs.rs
@@ -261,6 +262,8 @@ DTIC is sixth. Treat public DTIC as a fragile adapter until a stable official AP
 
 NSA FOIA Reading Room is available as an official-source adapter for `nsa.gov` Reading Room and FOIA Reports and Releases leads. Treat results as citation leads: prefer linked PDFs, preserve official page/PDF URLs, and require PDF ingestion/page-boundary verification before page-specific citation.
 
+State Department Virtual Reading Room is available as an official-source adapter for `foia.state.gov` Search Released Documents and FOIA Library leads. Treat results as citation leads: preserve State OCR/unavailable-field/originating-agency caveats, prefer linked PDFs, and require PDF ingestion/page-boundary verification before page-specific citation.
+
 PURSUE / War Department UAP releases should be added as an official-source adapter after GovInfo or alongside the UAP-specific source batch. Target `https://www.war.gov/ufo/` and official linked release assets first. Preserve release tranche metadata, list PDFs/images/videos as assets, ingest PDFs by default, and leave images/videos metadata-only until media handling is explicitly designed.
 
 AARO UAP records should be tracked as a related official UAP source. Prefer official AARO historical-record and release pages over mirrors, preserve originating agency/release notes, and keep the adapter separate from PURSUE unless the official sites expose one stable shared index.
@@ -383,7 +386,7 @@ Default behavior should be polite and bounded. Bulk ingestion should require exp
 
 Start with deterministic fixture tests:
 
-- Adapter parsing fixtures for CIA, NARA, GovInfo, PURSUE/war.gov UAP, AARO, DOJ Epstein Library, DOJ component FOIA indexes, FBI Vault, FRUS, NOAA, and DTIC.
+- Adapter parsing fixtures for CIA, NARA, GovInfo, PURSUE/war.gov UAP, AARO, DOJ Epstein Library, DOJ component FOIA indexes, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, and DTIC.
 - Cursor encoding and decoding.
 - Cache hit, stale hit, conditional GET, and 304 behavior.
 - PDF text extraction fixtures.
@@ -410,6 +413,7 @@ Coverage:
 - Use DOJ Epstein Library to find an EFTA data-set PDF while preserving DOJ sensitivity warnings.
 - Use FBI Vault to retrieve a multipart FOIA file with correct source provenance.
 - Use FRUS for a policy document and return source citation metadata.
+- Use the State Department Virtual Reading Room for an official released-document lead while preserving OCR and originating-agency caveats.
 - Handle a scanned PDF that requires OCR.
 - Continue paginated source search using an opaque cursor.
 - Recover from a rate-limit response using cached data.
@@ -462,6 +466,7 @@ Add as many official sources as practical while keeping each adapter policy-pinn
 7. FRUS.
 8. NOAA Institutional Repository.
 9. DTIC.
+10. State Department Virtual Reading Room.
 
 Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
 
@@ -489,3 +494,4 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - FBI Vault: <https://vault.fbi.gov/>
 - Office of the Historian documents the FRUS catalog/API and XML/TEI-backed publication model: <https://history.state.gov/developer>
 - NOAA Institutional Repository is the target entry point for NOAA-authored or NOAA-funded publications and reports: <https://repository.library.noaa.gov/>
+- State Department FOIA Library and Virtual Reading Room search are the target entry points for released Department of State FOIA records: <https://foia.state.gov/> and <https://foia.state.gov/Search/Search.aspx>

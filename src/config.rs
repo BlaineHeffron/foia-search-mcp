@@ -136,6 +136,13 @@ impl Config {
                 note: "NSA FOIA Reading Room adapter is available for official nsa.gov Reading Room and FOIA Reports and Releases leads; prefer PDF assets and verify page boundaries before citation."
                     .to_string(),
             },
+            SourceStatus {
+                name: "state".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "State Department Virtual Reading Room adapter is available for official foia.state.gov Search Released Documents leads; preserve OCR/originating-agency warnings, prefer PDFs, and verify page boundaries before citation."
+                    .to_string(),
+            },
         ]
     }
 }
@@ -388,6 +395,27 @@ mod tests {
         assert_eq!(nsa.status, "available");
         assert!(nsa.note.contains("nsa.gov"));
         assert!(nsa.note.contains("verify page boundaries"));
+    }
+
+    #[test]
+    fn source_status_reports_state_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let state = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "state")
+            .expect("state source should be listed");
+
+        assert_eq!(state.status, "available");
+        assert!(state.note.contains("foia.state.gov"));
+        assert!(state.note.contains("OCR"));
     }
 
     #[test]

@@ -247,6 +247,21 @@ Additional checkpoint after the NSA FOIA Reading Room adapter slice:
 - NSA keeps default source policy contracts: `cache_policy=RespectSourceHeaders`
   and `redirect_policy=Deny`.
 
+Additional checkpoint after the State Department Virtual Reading Room adapter slice:
+
+- Added `src/sources/state.rs` and split live helper modules for an official
+  `state` adapter targeting `https://foia.state.gov/` and the Virtual Reading
+  Room/Search Released Documents entry point at `/Search/Results.aspx`.
+- The adapter is conservative and fixture-backed: source search parses official
+  `foia.state.gov` search-result/detail/PDF links, `get_record` accepts returned
+  source IDs or official URLs, and `list_assets` prefers PDFs while retaining
+  HTML/OCR-text/non-PDF assets as metadata leads.
+- State keeps default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`. Source
+  warnings preserve State's OCR caveat, unavailable-field caveat, and
+  originating-agency caveat; page citations still require PDF ingestion and
+  page-boundary verification.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -348,9 +363,10 @@ actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
-- Phase 8 source expansion is complete. If source expansion resumes, next
-  source-adapter todo order should be:
-  State Department Virtual Reading Room, DIA FOIA Electronic Reading Room,
+- Phase 8 source expansion is complete through the State Department Virtual
+  Reading Room. If source expansion resumes, next source-adapter todo order
+  should be:
+  DIA FOIA Electronic Reading Room,
   OSD/Joint Staff reading room, Army FOIA Reading Room, then the broader Navy
   reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at
