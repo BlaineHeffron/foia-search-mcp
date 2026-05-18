@@ -41,7 +41,7 @@ impl FoiaSearchRuntime {
     }
 }
 
-fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
+pub(crate) fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>> {
     vec![
         Arc::new(AaroAdapter::from_env()),
         Arc::new(CiaAdapter::from_env()),

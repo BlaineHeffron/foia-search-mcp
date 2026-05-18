@@ -1,7 +1,9 @@
 use crate::errors::FoiaSearchError;
-use crate::model::{IngestionJob, LocalDocument, LocalDocumentText, LocalPageText};
+use crate::index::SearchHit;
+use crate::model::{IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit};
 use crate::store::{StoreError, StoredDocumentMetadata, StoredIngestionJob, StoredPageText};
 use rmcp::ErrorData as McpError;
+use serde_json::Value;
 
 pub(crate) const MAX_TEXT_PAGE_RANGE: u32 = 50;
 
@@ -106,6 +108,7 @@ pub(crate) fn local_document_from_stored(
     let metadata_json = serde_json::from_str(&document.metadata_json)
         .map_err(FoiaSearchError::from)
         .map_err(FoiaSearchError::into_mcp_error)?;
+    let warnings = source_warnings_from_metadata(&metadata_json);
     Ok(LocalDocument {
         id: document.public_id.clone(),
         document_key: document.document_key.to_string(),
@@ -124,7 +127,7 @@ pub(crate) fn local_document_from_stored(
         citation_note: document.citation_note,
         terms_note: document.terms_note,
         page_count: document.page_count,
-        warnings: Vec::new(),
+        warnings,
     })
 }
 
@@ -133,8 +136,12 @@ pub(crate) fn local_document_text_from_stored(
     page_start: u32,
     page_end: u32,
     pages: Vec<StoredPageText>,
-) -> LocalDocumentText {
+) -> Result<LocalDocumentText, McpError> {
     let document_key = document.document_key.to_string();
+    let metadata_json = serde_json::from_str(&document.metadata_json)
+        .map_err(FoiaSearchError::from)
+        .map_err(FoiaSearchError::into_mcp_error)?;
+    let warnings = source_warnings_from_metadata(&metadata_json);
     let text = pages
         .iter()
         .map(|page| format!("[page {}]\n{}", page.page_number, page.text))
@@ -150,7 +157,7 @@ pub(crate) fn local_document_text_from_stored(
         })
         .collect();
 
-    LocalDocumentText {
+    Ok(LocalDocumentText {
         document_key,
         public_id: document.public_id,
         title: document.title,
@@ -158,6 +165,45 @@ pub(crate) fn local_document_text_from_stored(
         page_end,
         pages,
         text,
-        warnings: Vec::new(),
+        warnings,
+    })
+}
+
+pub(crate) fn local_search_hit_from_index(hit: SearchHit) -> LocalSearchHit {
+    let warnings = source_warnings_from_metadata_str(&hit.metadata_json);
+    LocalSearchHit {
+        document_key: hit.document_key.to_string(),
+        chunk_id: hit.chunk_id,
+        source: hit.source,
+        title: hit.title,
+        page_start: hit.page_start,
+        page_end: hit.page_end,
+        score: hit.score,
+        snippet: hit.snippet,
+        citation_note: hit.citation_note,
+        terms_note: hit.terms_note,
+        warnings,
     }
+}
+
+fn source_warnings_from_metadata_str(metadata_json: &str) -> Vec<String> {
+    serde_json::from_str::<Value>(metadata_json)
+        .ok()
+        .map(|metadata| source_warnings_from_metadata(&metadata))
+        .unwrap_or_default()
+}
+
+fn source_warnings_from_metadata(metadata: &Value) -> Vec<String> {
+    let Some(warning) = metadata
+        .get("source_metadata")
+        .and_then(|source_metadata| source_metadata.get("source_warning"))
+        .or_else(|| metadata.get("source_warning"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|warning| !warning.is_empty())
+    else {
+        return Vec::new();
+    };
+
+    vec![warning.to_owned()]
 }

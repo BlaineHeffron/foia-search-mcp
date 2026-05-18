@@ -18,6 +18,9 @@ pub struct SearchHit {
     pub page_end: i64,
     pub score: f64,
     pub snippet: String,
+    pub metadata_json: String,
+    pub citation_note: Option<String>,
+    pub terms_note: Option<String>,
 }
 
 pub struct FtsSearch<'a> {
@@ -40,10 +43,12 @@ impl<'a> FtsSearch<'a> {
     fn search_all_sources(&self, query: &str, limit: i64) -> Result<Vec<SearchHit>, StoreError> {
         let mut stmt = self.store.connection().prepare(
             "
-            SELECT document_key, chunk_id, source, title, page_start, page_end,
+            SELECT f.document_key, f.chunk_id, f.source, f.title, f.page_start, f.page_end,
                 bm25(chunk_fts) AS score,
-                snippet(chunk_fts, 4, '[', ']', '...', 32) AS snippet
-            FROM chunk_fts
+                snippet(chunk_fts, 4, '[', ']', '...', 32) AS snippet,
+                d.metadata_json, d.citation_note, d.terms_note
+            FROM chunk_fts f
+            JOIN documents d ON d.document_key = f.document_key
             WHERE chunk_fts MATCH ?1
             ORDER BY score
             LIMIT ?2
@@ -61,11 +66,13 @@ impl<'a> FtsSearch<'a> {
     ) -> Result<Vec<SearchHit>, StoreError> {
         let mut stmt = self.store.connection().prepare(
             "
-            SELECT document_key, chunk_id, source, title, page_start, page_end,
+            SELECT f.document_key, f.chunk_id, f.source, f.title, f.page_start, f.page_end,
                 bm25(chunk_fts) AS score,
-                snippet(chunk_fts, 4, '[', ']', '...', 32) AS snippet
-            FROM chunk_fts
-            WHERE chunk_fts MATCH ?1 AND source = ?2
+                snippet(chunk_fts, 4, '[', ']', '...', 32) AS snippet,
+                d.metadata_json, d.citation_note, d.terms_note
+            FROM chunk_fts f
+            JOIN documents d ON d.document_key = f.document_key
+            WHERE chunk_fts MATCH ?1 AND f.source = ?2
             ORDER BY score
             LIMIT ?3
             ",
@@ -88,6 +95,9 @@ fn read_hit(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchHit> {
         page_end: row.get(5)?,
         score: row.get(6)?,
         snippet: row.get(7)?,
+        metadata_json: row.get(8)?,
+        citation_note: row.get(9)?,
+        terms_note: row.get(10)?,
     })
 }
 
@@ -164,5 +174,72 @@ mod tests {
         assert_eq!(hits[0].document_key, key);
         assert_eq!(hits[0].page_start, 1);
         assert_eq!(hits[0].page_end, 1);
+    }
+
+    #[test]
+    fn search_hit_carries_persisted_document_notes_and_warning_metadata() {
+        let mut store = SqliteStore::open_memory().expect("open in-memory store");
+        let key = DocumentKey::new("doc_doj_epstein_001").expect("safe key");
+        store
+            .upsert_document(&UpsertDocument {
+                public_id: "doj_epstein:data-set-1-files".to_owned(),
+                document_key: key.clone(),
+                source: "doj_epstein".to_owned(),
+                source_id: "data-set-1-files".to_owned(),
+                title: "DOJ Epstein Library fixture".to_owned(),
+                date: None,
+                collection: Some("DOJ Epstein Library".to_owned()),
+                record_group: None,
+                description: None,
+                origin_url: None,
+                document_url: None,
+                pdf_url: None,
+                metadata_json: r#"{"source_metadata":{"source_warning":"DOJ privacy warning"}}"#
+                    .to_owned(),
+                citation_note: Some("Cite official DOJ page/PDF URL.".to_owned()),
+                terms_note: Some("Sensitive DOJ Epstein Library content.".to_owned()),
+            })
+            .expect("insert document");
+        store
+            .replace_pages_and_chunks(
+                &key,
+                &[PageInput {
+                    document_key: key.clone(),
+                    page_number: 1,
+                    text: "Epstein fixture text".to_owned(),
+                    text_source: TextSource::EmbeddedPdfText,
+                    quality_score: Some(0.9),
+                    warnings_json: "[]".to_owned(),
+                }],
+                &[ChunkInput {
+                    document_key: key.clone(),
+                    chunk_id: "c1".to_owned(),
+                    page_start: 1,
+                    page_end: 1,
+                    text: "Epstein fixture text".to_owned(),
+                    token_estimate: Some(3),
+                    metadata_json: "{}".to_owned(),
+                }],
+            )
+            .expect("replace pages and chunks");
+
+        let hits = FtsSearch::new(&store)
+            .search(&SearchQuery {
+                query: "fixture".to_owned(),
+                source: Some("doj_epstein".to_owned()),
+                limit: 10,
+            })
+            .expect("search fts");
+
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].metadata_json.contains("DOJ privacy warning"));
+        assert_eq!(
+            hits[0].citation_note.as_deref(),
+            Some("Cite official DOJ page/PDF URL.")
+        );
+        assert_eq!(
+            hits[0].terms_note.as_deref(),
+            Some("Sensitive DOJ Epstein Library content.")
+        );
     }
 }

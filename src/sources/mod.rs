@@ -14,6 +14,7 @@ pub mod noaa;
 pub mod nsa;
 pub mod osd_joint_staff;
 pub mod pursue;
+pub mod registry;
 pub mod state;
 
 use crate::ingest::RedirectPolicy;

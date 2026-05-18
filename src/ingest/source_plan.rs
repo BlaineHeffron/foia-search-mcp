@@ -507,6 +507,65 @@ mod tests {
     }
 
     #[test]
+    fn doj_epstein_mixed_media_preserves_sensitive_notes_and_selects_pdf_only() {
+        let mut source_record = record(
+            vec![
+                asset(
+                    SourceAssetRole::Image,
+                    "https://www.justice.gov/epstein/files/photo.jpg",
+                    Some("image/jpeg"),
+                ),
+                asset(
+                    SourceAssetRole::Other,
+                    "https://www.justice.gov/epstein/files/video.mp4",
+                    Some("video/mp4"),
+                ),
+                asset(
+                    SourceAssetRole::Other,
+                    "https://www.justice.gov/epstein/files/audio.mp3",
+                    Some("audio/mpeg"),
+                ),
+                asset(
+                    SourceAssetRole::Pdf,
+                    "https://www.justice.gov/epstein/files/report.pdf",
+                    Some("application/pdf"),
+                ),
+            ],
+            None,
+        );
+        source_record.source = "doj_epstein";
+        source_record.id = "doj_epstein:data-set-1-files".to_owned();
+        source_record.source_id = "data-set-1-files".to_owned();
+        source_record.metadata.insert(
+            "source_warning".to_owned(),
+            "DOJ privacy and victim-identification warning".to_owned(),
+        );
+        source_record.citation_note = Some("Cite official DOJ page/PDF URL.".to_owned());
+        source_record.terms_note = Some("Sensitive DOJ Epstein Library content.".to_owned());
+
+        let plan = plan_source_ingestion(&source_record, CachePolicy::RespectSourceHeaders)
+            .expect("DOJ record should select ingestible PDF");
+
+        assert_eq!(plan.asset.role, SourceAssetRole::Pdf);
+        assert_eq!(
+            plan.asset.url,
+            "https://www.justice.gov/epstein/files/report.pdf"
+        );
+        assert!(plan
+            .document
+            .metadata_json
+            .contains("DOJ privacy and victim-identification warning"));
+        assert_eq!(
+            plan.document.citation_note.as_deref(),
+            Some("Cite official DOJ page/PDF URL.")
+        );
+        assert_eq!(
+            plan.document.terms_note.as_deref(),
+            Some("Sensitive DOJ Epstein Library content.")
+        );
+    }
+
+    #[test]
     fn returns_error_for_invalid_document_key() {
         let mut source_record = record(
             vec![asset(

@@ -135,4 +135,8 @@
     <question>A SQLite FTS repair apply request failed because the confirmation was missing or wrong. Recover safely.</question>
     <expected>Recognize the invalid_params confirmation error; do not retry with guessed or partial confirmation unless the operator explicitly supplies the exact string; use report_sqlite_fts_drift or plan_sqlite_fts_repairs to show current scope and the required confirmation "apply sqlite fts repairs"; explain that report/plan are dry-run and orphaned chunk_fts rows remain manual-review only.</expected>
   </eval>
+  <eval id="doj-epstein-local-warning-persistence">
+    <question>After ingesting a DOJ Epstein PDF lead, search and retrieve the local document while preserving sensitivity warnings.</question>
+    <expected>Call search_source with source "doj_epstein", call get_source_record for a PDF-bearing lead, then call ingest_document for the source-prefixed id and inspect get_ingestion_job until completion or queued status is reported. Use search_local_documents and get_document/get_document_text for the ingested document; preserve the DOJ privacy/victim-identification warning plus citation_note and terms_note in local search and retrieval output, and do not imply image/audio/video assets were automatically ingested.</expected>
+  </eval>
 </evals>

@@ -99,6 +99,9 @@ pub struct LocalSearchHit {
     pub page_end: i64,
     pub score: f64,
     pub snippet: String,
+    pub citation_note: Option<String>,
+    pub terms_note: Option<String>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

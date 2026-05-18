@@ -20,11 +20,12 @@ use crate::{
         source_params::{LocalSourceFilter, SearchSourceName, SourceRecordSourceName},
         support::{
             document_lookup_error_to_mcp, ingestion_job_error_to_mcp, ingestion_job_from_stored,
-            local_document_from_stored, local_document_text_from_stored, source_error_to_mcp,
-            store_error_to_mcp, validate_source, validate_text_page_range,
+            local_document_from_stored, local_document_text_from_stored,
+            local_search_hit_from_index, source_error_to_mcp, store_error_to_mcp, validate_source,
+            validate_text_page_range,
         },
     },
-    model::{LocalSearchHit, SearchPage},
+    model::SearchPage,
     sources::{SearchOptions, SourceAdapter, SourceStatus},
     store::{ContentAddressedStore, SqliteStore},
 };
@@ -259,16 +260,7 @@ impl FoiaSearchServer {
             })
             .map_err(store_error_to_mcp)?
             .into_iter()
-            .map(|hit| LocalSearchHit {
-                document_key: hit.document_key.to_string(),
-                chunk_id: hit.chunk_id,
-                source: hit.source,
-                title: hit.title,
-                page_start: hit.page_start,
-                page_end: hit.page_end,
-                score: hit.score,
-                snippet: hit.snippet,
-            })
+            .map(local_search_hit_from_index)
             .collect::<Vec<_>>();
         json_result(&hits)
     }
@@ -303,7 +295,7 @@ impl FoiaSearchServer {
         let pages = store
             .get_page_text(&params.document_id, page_start, page_end)
             .map_err(document_lookup_error_to_mcp)?;
-        let response = local_document_text_from_stored(document, page_start, page_end, pages);
+        let response = local_document_text_from_stored(document, page_start, page_end, pages)?;
         json_result(&response)
     }
 
@@ -666,7 +658,8 @@ mod tests {
                     text_source: "local_ocr".to_owned(),
                 },
             ],
-        );
+        )
+        .expect("valid metadata JSON");
 
         assert_eq!(response.document_key, "doc_cia_lookup");
         assert_eq!(response.public_id, "cia:CREST-lookup");

@@ -256,16 +256,18 @@ mod tests {
     #[cfg(unix)]
     fn write_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
+        let tmp_path = dir.join(format!("{name}.tmp"));
         {
-            let mut file = File::create(&path).expect("create fake binary");
+            let mut file = File::create(&tmp_path).expect("create fake binary");
             file.write_all(body.as_bytes()).expect("write fake binary");
             file.sync_all().expect("sync fake binary");
         }
-        let mut permissions = fs::metadata(&path)
+        let mut permissions = fs::metadata(&tmp_path)
             .expect("fake binary metadata")
             .permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(&path, permissions).expect("make fake binary executable");
+        fs::set_permissions(&tmp_path, permissions).expect("make fake binary executable");
+        fs::rename(&tmp_path, &path).expect("install fake binary");
         path
     }
 
