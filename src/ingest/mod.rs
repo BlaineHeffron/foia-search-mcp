@@ -36,6 +36,8 @@ mod reconcile_repair_tests;
 mod reconcile_tests;
 pub mod redirect;
 pub mod source_plan;
+#[cfg(test)]
+mod source_plan_asset_tests;
 pub(crate) mod source_resolution;
 pub mod worker;
 #[cfg(test)]
