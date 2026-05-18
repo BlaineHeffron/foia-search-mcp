@@ -99,7 +99,9 @@ For a compiled binary, set `command` to the built executable path and omit the C
   quality warnings or embedded extraction fails.
 - `FOIA_SEARCH_OCR_BACKEND`: optional local OCR backend. Defaults to `none`;
   set to `ocrmypdf` to run the `ocrmypdf` backend. OCR still remains disabled
-  unless `FOIA_SEARCH_OCR_FALLBACK=on_quality_warning` is also set.
+  unless `FOIA_SEARCH_OCR_FALLBACK=on_quality_warning` is also set. The
+  reserved value `tesseract` is recognized in status output as unavailable; it
+  does not enable OCR extraction.
 - `FOIA_SEARCH_OCRMYPDF_BIN`: optional `ocrmypdf` executable path. Defaults to
   `ocrmypdf`.
 - `FOIA_SEARCH_OCR_TIMEOUT_SECONDS`: optional local OCR command timeout.

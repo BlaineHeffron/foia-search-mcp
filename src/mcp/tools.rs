@@ -15,7 +15,7 @@ use crate::{
     mcp::output::json_result,
     mcp::{
         fts_repair,
-        ingestion::enqueue_ingestion_job,
+        ingestion::{enqueue_ingestion_job, enqueue_refresh_job},
         repair,
         source_params::{LocalSourceFilter, SearchSourceName, SourceRecordSourceName},
         status,
@@ -375,10 +375,8 @@ impl FoiaSearchServer {
         Parameters(params): Parameters<RefreshDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
         let mut store = self.open_store()?;
-        let job = enqueue_ingestion_job(
+        let job = enqueue_refresh_job(
             &mut store,
-            "refresh",
-            "refresh",
             &params.document_id,
             params.force.unwrap_or(false),
         )?;
@@ -688,4 +686,6 @@ mod tests {
             Err(error) => error,
         }
     }
+
+    include!("tools/tools_refresh_tests.rs");
 }

@@ -2,7 +2,7 @@ use rmcp::ErrorData as McpError;
 
 use crate::{
     errors::FoiaSearchError,
-    store::{NewIngestionJob, SqliteStore, StoreError, StoredIngestionJob},
+    store::{NewIngestionJob, SqliteStore, StoreError, StoredDocumentMetadata, StoredIngestionJob},
 };
 
 #[derive(Debug)]
@@ -27,6 +27,25 @@ pub(crate) fn enqueue_ingestion_job(
             source_id: Some(locator.source_id),
             target_url: None,
             next_action: queued_next_action(action_operation, force),
+        })
+        .map_err(store_error_to_mcp)
+}
+
+pub(crate) fn enqueue_refresh_job(
+    store: &mut SqliteStore,
+    document_id: &str,
+    force: bool,
+) -> Result<StoredIngestionJob, McpError> {
+    reject_direct_ingestion_locator(document_id)?;
+    let document = resolve_refresh_document(store, document_id)?;
+    store
+        .create_ingestion_job(&NewIngestionJob {
+            job_key: format!("refresh:{}", document.public_id),
+            operation: "refresh".to_owned(),
+            source: document.source,
+            source_id: Some(document.source_id),
+            target_url: None,
+            next_action: queued_next_action("refresh", force),
         })
         .map_err(store_error_to_mcp)
 }
@@ -63,6 +82,23 @@ fn reject_direct_ingestion_locator(document_id: &str) -> Result<(), McpError> {
         .into_mcp_error());
     }
     Ok(())
+}
+
+fn resolve_refresh_document(
+    store: &SqliteStore,
+    document_id: &str,
+) -> Result<StoredDocumentMetadata, McpError> {
+    store
+        .get_document_metadata(document_id)
+        .map_err(|error| match error {
+            StoreError::MissingDocument(_) => FoiaSearchError::InvalidRequest(format!(
+                "refresh_document requires an already-ingested local document_id or document_key; \
+             no local document was found for {document_id:?}. Use search_source/get_source_record \
+             followed by ingest_document, then refresh_document after ingestion succeeds."
+            ))
+            .into_mcp_error(),
+            other => store_error_to_mcp(other),
+        })
 }
 
 fn is_direct_url_locator(candidate: &str) -> bool {

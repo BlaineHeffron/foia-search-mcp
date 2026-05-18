@@ -65,18 +65,20 @@ pub enum OcrBackend {
     #[default]
     None,
     Ocrmypdf,
+    Tesseract,
 }
 
 impl OcrBackend {
     pub fn from_env_value(value: Option<&str>) -> Self {
         match value.map(str::trim) {
             Some("ocrmypdf") => Self::Ocrmypdf,
+            Some("tesseract") => Self::Tesseract,
             _ => Self::None,
         }
     }
 
     pub fn is_enabled(self) -> bool {
-        self != Self::None
+        matches!(self, Self::Ocrmypdf)
     }
 }
 
@@ -158,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn ocr_backend_config_ignores_invalid_values() {
+    fn ocr_backend_config_parses_tesseract_as_unimplemented_backend() {
         let config = OcrBackendConfig::from_env_values(
             Some("tesseract"),
             Some("  "),
@@ -166,9 +168,16 @@ mod tests {
             Some("invalid"),
         );
 
-        assert_eq!(config.backend, OcrBackend::None);
+        assert_eq!(config.backend, OcrBackend::Tesseract);
         assert_eq!(config.ocrmypdf_binary, PathBuf::from("ocrmypdf"));
         assert_eq!(config.timeout, Duration::from_secs(300));
         assert_eq!(config.max_stderr_bytes, 8 * 1024);
+    }
+
+    #[test]
+    fn ocr_backend_config_ignores_unknown_values() {
+        let config = OcrBackendConfig::from_env_values(Some("unknown"), None, None, None);
+
+        assert_eq!(config.backend, OcrBackend::None);
     }
 }

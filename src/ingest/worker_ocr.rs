@@ -38,7 +38,7 @@ pub(crate) fn worker_ocr_extractor(
                 backend_config.max_stderr_bytes,
             )))
         }
-        OcrBackend::None => WorkerOcrExtractor::Noop(NoopOcrExtractor),
+        OcrBackend::None | OcrBackend::Tesseract => WorkerOcrExtractor::Noop(NoopOcrExtractor),
     }
 }
 
@@ -78,6 +78,19 @@ mod tests {
         assert_eq!(
             effective_ocr_backend(OcrFallbackPolicy::on_quality_warning(), &backend),
             OcrBackend::Ocrmypdf
+        );
+    }
+
+    #[test]
+    fn effective_ocr_backend_keeps_unimplemented_tesseract_disabled() {
+        let backend = OcrBackendConfig {
+            backend: OcrBackend::Tesseract,
+            ..OcrBackendConfig::default()
+        };
+
+        assert_eq!(
+            effective_ocr_backend(OcrFallbackPolicy::on_quality_warning(), &backend),
+            OcrBackend::None
         );
     }
 }
