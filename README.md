@@ -24,8 +24,11 @@ The Rust MCP server is the primary implementation. The old TypeScript draft has 
 - `report_derived_artifact_drift`: report drift in derived `text/` and `ocr/` artifacts without writing.
 - `plan_derived_artifact_repairs`: plan missing/stale rewrites and orphan manual-review actions without writing.
 - `apply_derived_artifact_repairs`: apply missing/stale derived-artifact rewrites from SQLite after explicit confirmation; orphaned artifacts remain manual-review only.
+- `report_sqlite_fts_drift`: report drift between canonical SQLite `chunks` and derived `chunk_fts` rows without writing.
+- `plan_sqlite_fts_repairs`: plan safe `chunk_fts` rewrites and orphan manual-review actions without writing.
+- `apply_sqlite_fts_repairs`: apply missing/stale `chunk_fts` rewrites from canonical SQLite chunks after explicit confirmation; orphan rows remain manual-review only.
 
-Derived `text/` and `ocr/` artifact reconciliation is exposed through explicit operator-facing MCP report/plan/apply tools. The runtime does not auto-repair those artifacts on startup or in background workers.
+Derived `text/`/`ocr/` artifact reconciliation and SQLite FTS index reconciliation are exposed through explicit operator-facing MCP report/plan/apply tools. The runtime does not auto-repair those artifacts on startup or in background workers.
 
 ## Rust Run
 

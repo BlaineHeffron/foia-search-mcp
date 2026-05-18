@@ -107,4 +107,12 @@
     <question>Find an NSA FOIA Reading Room lead about Roswell, fetch one normalized NSA record, and summarize citation safety context.</question>
     <expected>Call list_sources, then search_source with source "nsa" and a query such as "Roswell"; call get_source_record using a returned nsa id or official nsa.gov URL; report official NSA page/PDF URL, citation note, terms note, asset_count/pdf_asset_count, and warn that page citations require PDF ingestion and page-boundary verification.</expected>
   </eval>
+  <eval id="28">
+    <question>Inspect the local SQLite FTS index for drift, plan repairs, and apply only if the operator confirmation is available.</question>
+    <expected>Call report_sqlite_fts_drift and treat it as read-only; call plan_sqlite_fts_repairs and summarize rewrite_from_canonical versus manual_review actions; do not assume automatic repair; call apply_sqlite_fts_repairs only with exact confirmation "apply sqlite fts repairs"; report rewritten/already_current/skipped_manual_review and advise re-running report or resolving manual-review orphaned chunk_fts rows separately.</expected>
+  </eval>
+  <eval id="29">
+    <question>A SQLite FTS repair apply request failed because the confirmation was missing or wrong. Recover safely.</question>
+    <expected>Recognize the invalid_params confirmation error; do not retry with guessed or partial confirmation unless the operator explicitly supplies the exact string; use report_sqlite_fts_drift or plan_sqlite_fts_repairs to show current scope and the required confirmation "apply sqlite fts repairs"; explain that report/plan are dry-run and orphaned chunk_fts rows remain manual-review only.</expected>
+  </eval>
 </evals>

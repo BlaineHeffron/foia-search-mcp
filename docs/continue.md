@@ -315,6 +315,16 @@ Additional checkpoint after the SQLite FTS index repair slice:
 - Focused tests cover missing, stale, duplicate, mixed, orphan-only,
   idempotent second apply, and canonical-table non-mutation behavior.
 
+Additional checkpoint after the SQLite FTS MCP exposure slice:
+
+- Exposed `report_sqlite_fts_drift`, `plan_sqlite_fts_repairs`, and
+  `apply_sqlite_fts_repairs` as operator-facing MCP tools. Report/plan remain
+  dry-run, apply requires the exact confirmation string surfaced by the plan,
+  and orphaned `chunk_fts` rows stay manual-review only.
+- README and eval guardrails now document the SQLite FTS report/plan/apply
+  workflow alongside derived `text/`/`ocr/` artifact repair. No startup,
+  worker, or runtime auto-repair path was added.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
@@ -334,9 +344,7 @@ Also keep running the final scans used for this batch: Rust LOC, production `unw
 
 Start with a read-only pass over the current repair surfaces before extending
 them. Do not add automatic repair to startup or worker paths; keep repair
-actions explicit and operator-confirmed. If SQLite FTS repair is exposed through
-MCP later, add the same confirmation, wording, and eval guardrails used for
-derived-artifact repair.
+actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
@@ -358,8 +366,8 @@ derived-artifact repair.
   hop validation mandatory and preserve the current default-deny posture.
 - Add a later `tesseract` backend only if a concrete source/OCR need appears;
   the backend config already has a small enum shape for another local backend.
-- Derived-artifact repair is exposed through operator-facing MCP
-  report/plan/apply tools. Keep runtime/startup/worker auto-repair wiring
+- Derived-artifact and SQLite FTS repair are exposed through operator-facing
+  MCP report/plan/apply tools. Keep runtime/startup/worker auto-repair wiring
   untouched, and keep future repair surfaces explicit, confirmed, and covered
   by guardrail evals.
 

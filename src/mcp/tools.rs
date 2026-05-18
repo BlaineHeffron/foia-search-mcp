@@ -14,6 +14,7 @@ use crate::{
     ingest::IngestionWorkerKick,
     mcp::output::json_result,
     mcp::{
+        fts_repair,
         ingestion::enqueue_ingestion_job,
         repair,
         support::{
@@ -114,6 +115,18 @@ struct ApplyDerivedArtifactRepairsParams {
     #[schemars(
         description = "Explicit confirmation string: apply derived artifact repairs for <document_id>"
     )]
+    confirmation: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ReportSqliteFtsDriftParams {}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct PlanSqliteFtsRepairsParams {}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ApplySqliteFtsRepairsParams {
+    #[schemars(description = "Explicit confirmation string: apply sqlite fts repairs")]
     confirmation: String,
 }
 
@@ -345,6 +358,41 @@ impl FoiaSearchServer {
             &params.confirmation,
         )
         .map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(description = "Report SQLite chunk_fts index drift without writing anything.")]
+    async fn report_sqlite_fts_drift(
+        &self,
+        Parameters(_params): Parameters<ReportSqliteFtsDriftParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let response =
+            fts_repair::report_sqlite_fts_drift(&store).map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(description = "Plan SQLite chunk_fts index repairs without writing anything.")]
+    async fn plan_sqlite_fts_repairs(
+        &self,
+        Parameters(_params): Parameters<PlanSqliteFtsRepairsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let response =
+            fts_repair::plan_sqlite_fts_repairs(&store).map_err(|error| error.into_mcp_error())?;
+        json_result(&response)
+    }
+
+    #[tool(
+        description = "Apply SQLite chunk_fts index repairs. This requires explicit confirmation string 'apply sqlite fts repairs'. Orphaned chunk_fts rows are skipped for manual review."
+    )]
+    async fn apply_sqlite_fts_repairs(
+        &self,
+        Parameters(params): Parameters<ApplySqliteFtsRepairsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self.open_store()?;
+        let response = fts_repair::apply_sqlite_fts_repairs(&store, &params.confirmation)
+            .map_err(|error| error.into_mcp_error())?;
         json_result(&response)
     }
 

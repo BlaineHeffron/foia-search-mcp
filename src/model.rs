@@ -151,6 +151,49 @@ pub struct DerivedArtifactRepairApplyResponse {
     pub next_actions: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SqliteFtsRepairIssue {
+    pub issue: String,
+    pub document_key: String,
+    pub chunk_id: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqliteFtsRepairReportResponse {
+    pub canonical_chunk_count: usize,
+    pub chunk_fts_row_count: usize,
+    pub issue_count: usize,
+    pub issues: Vec<SqliteFtsRepairIssue>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqliteFtsRepairAction {
+    pub action: String,
+    pub document_key: String,
+    pub chunk_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqliteFtsRepairPlanResponse {
+    pub action_count: usize,
+    pub rewrite_count: usize,
+    pub manual_review_count: usize,
+    pub actions: Vec<SqliteFtsRepairAction>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqliteFtsRepairApplyResponse {
+    pub issue_count: usize,
+    pub rewritten: usize,
+    pub already_current: usize,
+    pub skipped_manual_review: usize,
+    pub next_actions: Vec<String>,
+}
+
 impl From<crate::sources::SourceRecord> for SourceRecord {
     fn from(record: crate::sources::SourceRecord) -> Self {
         let metadata_json = serde_json::to_value(record.metadata).unwrap_or(Value::Null);
