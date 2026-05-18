@@ -65,6 +65,7 @@ pub struct LocalDocument {
     pub metadata_json: Value,
     pub citation_note: Option<String>,
     pub terms_note: Option<String>,
+    pub source_warning: Option<String>,
     pub page_count: u32,
     pub warnings: Vec<String>,
 }
@@ -78,7 +79,11 @@ pub struct LocalDocumentText {
     pub page_end: u32,
     pub pages: Vec<LocalPageText>,
     pub text: String,
+    pub citation_note: Option<String>,
+    pub terms_note: Option<String>,
+    pub source_warning: Option<String>,
     pub warnings: Vec<String>,
+    pub next_actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,6 +106,7 @@ pub struct LocalSearchHit {
     pub snippet: String,
     pub citation_note: Option<String>,
     pub terms_note: Option<String>,
+    pub source_warning: Option<String>,
     pub warnings: Vec<String>,
 }
 

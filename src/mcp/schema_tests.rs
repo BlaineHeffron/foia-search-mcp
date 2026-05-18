@@ -107,6 +107,16 @@ fn repair_apply_tool_descriptions_name_confirmation_and_manual_review_behavior()
     assert!(fts.contains("manual review"));
 }
 
+#[test]
+fn list_sources_tool_description_names_object_response_shape() {
+    let tools = registered_tools_by_name();
+    let description = description_for(&tools, "list_sources");
+
+    assert!(description.contains("top-level object"));
+    assert!(description.contains("sources"));
+    assert!(description.contains("ocr"));
+}
+
 fn registered_tools_by_name() -> BTreeMap<String, Tool> {
     FoiaSearchServer::tool_router()
         .list_all()

@@ -350,7 +350,7 @@ Expose task-shaped tools, not raw adapter endpoints.
 
 Initial tools:
 
-- `list_sources`: show enabled sources, auth status, rate-limit notes, and cache policy notes.
+- `list_sources`: show enabled sources, auth status, rate-limit notes, cache policy notes, and OCR fallback status. The response is a top-level object with an `ocr` object and a `sources` array, not a bare source array.
 - `search_source`: search one official source for candidate records. Multi-source search is deferred until federated cursor state is designed.
 - `get_source_record`: fetch normalized metadata and assets for one source record.
 - `ingest_document`: ingest by source/id or, when explicitly enabled, a validated URL/local file; return an ingestion job.

@@ -87,4 +87,51 @@ mod tests {
         assert!(output.ocr.enabled);
         assert!(output.ocr.note.contains("ocrmypdf"));
     }
+
+    #[test]
+    fn list_sources_output_serializes_as_object_with_ocr_and_sources() {
+        let adapters: Vec<Arc<dyn SourceAdapter>> = Vec::new();
+        let output = list_sources_status(&test_config(), &adapters);
+        let value = serde_json::to_value(output).expect("list_sources output should serialize");
+        let object = value
+            .as_object()
+            .expect("list_sources output should be a top-level object");
+
+        assert_eq!(
+            object.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["ocr", "sources"]
+        );
+        assert!(
+            object
+                .get("ocr")
+                .and_then(serde_json::Value::as_object)
+                .is_some(),
+            "list_sources.ocr should be an object"
+        );
+        assert!(
+            object
+                .get("sources")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|sources| !sources.is_empty()),
+            "list_sources.sources should be a non-empty array"
+        );
+    }
+
+    #[test]
+    fn list_sources_entries_remain_compact_source_status_objects() {
+        let adapters: Vec<Arc<dyn SourceAdapter>> = Vec::new();
+        let output = list_sources_status(&test_config(), &adapters);
+        let value = serde_json::to_value(output).expect("list_sources output should serialize");
+        let first_source = value
+            .get("sources")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|sources| sources.first())
+            .and_then(serde_json::Value::as_object)
+            .expect("list_sources.sources should contain source objects");
+
+        assert_eq!(
+            first_source.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["enabled", "name", "note", "status"]
+        );
+    }
 }

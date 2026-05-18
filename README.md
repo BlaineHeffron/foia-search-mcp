@@ -12,7 +12,7 @@ The Rust MCP server is the primary implementation. The old TypeScript draft has 
 
 ## Rust MCP Tools
 
-- `list_sources`: list configured FOIA/declassified-document sources, implementation status, caveats, and local OCR fallback status.
+- `list_sources`: list configured FOIA/declassified-document sources, implementation status, caveats, and local OCR fallback status. Returns a top-level object shaped as `{ "ocr": { ... }, "sources": [ ... ] }`; callers should read the `sources` array rather than assuming the response itself is an array.
 - `search_source`: search one external source. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
 - `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.

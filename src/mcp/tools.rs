@@ -145,7 +145,7 @@ pub struct FoiaSearchServer {
 #[tool_router(vis = "pub(crate)")]
 impl FoiaSearchServer {
     #[tool(
-        description = "List FOIA/declassified-document sources, their implementation status, configuration notes, and local OCR fallback status. Use this before search_source when choosing where to search."
+        description = "List FOIA/declassified-document sources, their implementation status, configuration notes, and local OCR fallback status. Returns a top-level object with sources array and ocr object; read sources rather than assuming a bare array. Use this before search_source when choosing where to search."
     )]
     async fn list_sources(&self) -> Result<CallToolResult, McpError> {
         json_result(&status::list_sources_status(&self.config, &self.sources))

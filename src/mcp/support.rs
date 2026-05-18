@@ -102,13 +102,20 @@ pub(crate) fn validate_text_page_range(
     Ok((page_start, page_end))
 }
 
+pub(crate) fn empty_text_range_next_action(page_start: u32, page_end: u32) -> String {
+    format!(
+        "No local text pages were returned for pages {page_start}-{page_end}; verify the document_id, requested one-based page range, and ingestion job status."
+    )
+}
+
 pub(crate) fn local_document_from_stored(
     document: StoredDocumentMetadata,
 ) -> Result<LocalDocument, McpError> {
     let metadata_json = serde_json::from_str(&document.metadata_json)
         .map_err(FoiaSearchError::from)
         .map_err(FoiaSearchError::into_mcp_error)?;
-    let warnings = source_warnings_from_metadata(&metadata_json);
+    let source_warning = source_warning_from_metadata(&metadata_json);
+    let warnings = source_warning.iter().cloned().collect();
     Ok(LocalDocument {
         id: document.public_id.clone(),
         document_key: document.document_key.to_string(),
@@ -126,6 +133,7 @@ pub(crate) fn local_document_from_stored(
         metadata_json,
         citation_note: document.citation_note,
         terms_note: document.terms_note,
+        source_warning,
         page_count: document.page_count,
         warnings,
     })
@@ -141,7 +149,8 @@ pub(crate) fn local_document_text_from_stored(
     let metadata_json = serde_json::from_str(&document.metadata_json)
         .map_err(FoiaSearchError::from)
         .map_err(FoiaSearchError::into_mcp_error)?;
-    let warnings = source_warnings_from_metadata(&metadata_json);
+    let source_warning = source_warning_from_metadata(&metadata_json);
+    let warnings = source_warning.iter().cloned().collect();
     let text = pages
         .iter()
         .map(|page| format!("[page {}]\n{}", page.page_number, page.text))
@@ -156,6 +165,11 @@ pub(crate) fn local_document_text_from_stored(
             text: page.text,
         })
         .collect();
+    let next_actions = if text.is_empty() {
+        vec![empty_text_range_next_action(page_start, page_end)]
+    } else {
+        Vec::new()
+    };
 
     Ok(LocalDocumentText {
         document_key,
@@ -165,12 +179,17 @@ pub(crate) fn local_document_text_from_stored(
         page_end,
         pages,
         text,
+        citation_note: document.citation_note,
+        terms_note: document.terms_note,
+        source_warning,
         warnings,
+        next_actions,
     })
 }
 
 pub(crate) fn local_search_hit_from_index(hit: SearchHit) -> LocalSearchHit {
-    let warnings = source_warnings_from_metadata_str(&hit.metadata_json);
+    let source_warning = source_warning_from_metadata_str(&hit.metadata_json);
+    let warnings = source_warning.iter().cloned().collect();
     LocalSearchHit {
         document_key: hit.document_key.to_string(),
         chunk_id: hit.chunk_id,
@@ -182,28 +201,24 @@ pub(crate) fn local_search_hit_from_index(hit: SearchHit) -> LocalSearchHit {
         snippet: hit.snippet,
         citation_note: hit.citation_note,
         terms_note: hit.terms_note,
+        source_warning,
         warnings,
     }
 }
 
-fn source_warnings_from_metadata_str(metadata_json: &str) -> Vec<String> {
+fn source_warning_from_metadata_str(metadata_json: &str) -> Option<String> {
     serde_json::from_str::<Value>(metadata_json)
         .ok()
-        .map(|metadata| source_warnings_from_metadata(&metadata))
-        .unwrap_or_default()
+        .and_then(|metadata| source_warning_from_metadata(&metadata))
 }
 
-fn source_warnings_from_metadata(metadata: &Value) -> Vec<String> {
-    let Some(warning) = metadata
+fn source_warning_from_metadata(metadata: &Value) -> Option<String> {
+    metadata
         .get("source_metadata")
         .and_then(|source_metadata| source_metadata.get("source_warning"))
         .or_else(|| metadata.get("source_warning"))
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|warning| !warning.is_empty())
-    else {
-        return Vec::new();
-    };
-
-    vec![warning.to_owned()]
+        .map(str::to_owned)
 }
