@@ -57,6 +57,7 @@ src/
     govinfo.rs
     frus.rs
     dtic.rs
+    doe.rs
     noaa.rs
     nsa.rs
     state.rs
@@ -153,7 +154,7 @@ Core fields:
 
 - `id`: user-facing stable ID, usually `<source>:<source_id>`, never used directly as a file path.
 - `document_key`: filesystem-safe internal key used for derived text/OCR paths.
-- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, `state`, `dia`, `osd_joint_staff`, `army`, `navy`, or future adapter name.
+- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `doe`, `noaa`, `nsa`, `state`, `dia`, `osd_joint_staff`, `army`, `navy`, or future adapter name.
 - `source_id`: ID from the original source.
 - `title`
 - `date`

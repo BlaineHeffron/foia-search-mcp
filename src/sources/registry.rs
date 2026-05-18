@@ -7,6 +7,7 @@ pub const SOURCE_NAMES: &[&str] = &[
     "govinfo",
     "pursue",
     "doj_epstein",
+    "doe",
     "doj_foia",
     "frus",
     "dtic",
@@ -73,6 +74,12 @@ pub const SOURCE_REGISTRY: &[SourceRegistryEntry] = &[
         status: "available",
         config_note: "DOJ Epstein Library adapter is available for official DOJ disclosure leads; respect source cache headers/rate limits, preserve sensitivity/privacy warnings, and prefer PDF ingestion while images/audio/video remain metadata assets.",
         list_note: "DOJ Epstein adapter is wired for official DOJ disclosure leads and detail pages; respect source cache headers/rate limits, preserve sensitive-content warnings, and prefer PDFs over non-PDF media.",
+    },
+    SourceRegistryEntry {
+        name: "doe",
+        status: "available",
+        config_note: "DOE OpenNet adapter is available for official www.osti.gov/opennet declassified-record leads; respect source cache headers/rate limits, preserve accession/location metadata, and prefer linked PDFs while treating missing full text as a source-level caveat.",
+        list_note: "DOE OpenNet adapter is wired for official www.osti.gov/opennet declassified-record leads; respect source cache headers/rate limits, preserve accession/location metadata, and prefer linked PDFs with page-boundary verification before citation.",
     },
     SourceRegistryEntry {
         name: "doj_foia",

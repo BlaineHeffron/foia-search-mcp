@@ -2,6 +2,7 @@ pub mod aaro;
 pub mod army;
 pub mod cia;
 pub mod dia;
+pub mod doe;
 pub mod doj_epstein;
 pub mod doj_foia;
 pub mod dtic;

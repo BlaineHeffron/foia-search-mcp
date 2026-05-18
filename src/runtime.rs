@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::ingest::worker::{IngestionWorkerHandle, QueuedIngestionWorker};
 use crate::mcp::tools::FoiaSearchServer;
 use crate::sources::{
-    aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter,
+    aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter, doe::DoeAdapter,
     doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter, dtic::DticAdapter,
     fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter,
     navy::NavyAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, osd_joint_staff::OsdJointStaffAdapter,
@@ -52,6 +52,7 @@ pub(crate) fn configured_sources(config: &Config) -> Vec<Arc<dyn SourceAdapter>>
         Arc::new(GovInfoAdapter::default()),
         Arc::new(PursueAdapter::from_env()),
         Arc::new(DojEpsteinAdapter::from_env()),
+        Arc::new(DoeAdapter::from_env()),
         Arc::new(DojFoiaAdapter::from_env()),
         Arc::new(FbiVaultAdapter::from_env()),
         Arc::new(FrusAdapter::from_env()),

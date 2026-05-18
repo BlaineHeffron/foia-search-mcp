@@ -1,5 +1,5 @@
 use super::{
-    aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter,
+    aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter, doe::DoeAdapter,
     doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter, dtic::DticAdapter,
     fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter,
     navy::NavyAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, osd_joint_staff::OsdJointStaffAdapter,
@@ -86,6 +86,12 @@ fn pursue_adapter_cache_policy_remains_respect_source_headers() {
 #[test]
 fn doj_epstein_adapter_cache_policy_remains_respect_source_headers() {
     let adapter = DojEpsteinAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn doe_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = DoeAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }
 

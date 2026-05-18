@@ -235,6 +235,23 @@ Additional checkpoint after the GovInfo live API adapter slice:
 - Updated user-facing source status/tool wording so `list_sources`,
   `search_source`, and `get_source_record` no longer describe GovInfo as manual.
 
+Additional checkpoint after the DOE OpenNet adapter slice:
+
+- Verified official DOE/OSTI OpenNet entry points at `https://www.osti.gov/opennet/`,
+  `https://www.osti.gov/opennet/faq`, and `https://www.osti.gov/opennet/order`.
+  The site describes OpenNet as a Department of Energy supported declassified-
+  records database with official search and detail pages, while noting not all
+  records have electronic full text.
+- Added a conservative fixture-backed `doe` adapter for OpenNet search/detail
+  leads. It uses official OpenNet POST search and detail pages, returns stable
+  `doe:<osti-id>` records, preserves accession/location/source-warning
+  metadata, keeps default `RespectSourceHeaders` cache policy and `Deny`
+  redirect policy, and treats page citations as requiring PDF ingestion and
+  page-boundary verification.
+- Added deterministic loopback tests and fixtures for search, get_record,
+  empty results, source-changed markup, asset listing with PDF-first ordering,
+  official URL validation, and redirect denial.
+
 Additional checkpoint after the NSA FOIA Reading Room adapter slice:
 
 - Added `src/sources/nsa.rs` and split live helper modules for an official

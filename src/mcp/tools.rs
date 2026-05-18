@@ -52,7 +52,7 @@ struct GetSourceRecordParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct IngestDocumentParams {
     #[schemars(
-        description = "Document ID such as aaro:UAP-Records/history-and-origin-of-kona-blue, cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, doj_epstein:data-set-1-files, doj_foia:criminal-division, fbi_vault:rosenberg-case/mark-page, nsa:Helpful-Links/NSA-FOIA/Reading-Room/FOIA-Handbook, osd_joint_staff:Records-Declass/FOIA/Reading-Room/Reading-Room-List_2/Joint_Staff, or state:FOIALIBRARY/SearchResults.aspx?caseNumber=F-1990-04213"
+        description = "Document ID such as aaro:UAP-Records/history-and-origin-of-kona-blue, cia:CREST-..., nara:123456, govinfo:PKG, pursue:release-01:record, doj_epstein:data-set-1-files, doe:1824644, doj_foia:criminal-division, fbi_vault:rosenberg-case/mark-page, nsa:Helpful-Links/NSA-FOIA/Reading-Room/FOIA-Handbook, osd_joint_staff:Records-Declass/FOIA/Reading-Room/Reading-Room-List_2/Joint_Staff, or state:FOIALIBRARY/SearchResults.aspx?caseNumber=F-1990-04213"
     )]
     document_id: String,
     #[schemars(description = "Force re-fetching source assets even if already cached")]
@@ -152,7 +152,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, and OSD/Joint Staff FOIA Reading Room are wired for public HTTP search; DTIC is wired in accession/official-URL tracer mode with fragility warnings; NARA is wired for API-key Catalog search when configured."
+        description = "Search exactly one external FOIA/declassified-document source and return normalized records with source terms and citation notes. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOE OpenNet, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, and OSD/Joint Staff FOIA Reading Room are wired for public HTTP search; DTIC is wired in accession/official-URL tracer mode with fragility warnings; NARA is wired for API-key Catalog search when configured."
     )]
     async fn search_source(
         &self,
@@ -182,7 +182,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Fetch a normalized record from one source by source ID or URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, and OSD/Joint Staff FOIA Reading Room are wired for public HTTP fetch; DTIC is wired in accession/official-URL tracer mode with fragility warnings; NARA is wired for API-key Catalog fetch when configured."
+        description = "Fetch a normalized record from one source by source ID or URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOE OpenNet, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, and OSD/Joint Staff FOIA Reading Room are wired for public HTTP fetch; DTIC is wired in accession/official-URL tracer mode with fragility warnings; NARA is wired for API-key Catalog fetch when configured."
     )]
     async fn get_source_record(
         &self,
@@ -501,6 +501,7 @@ mod tests {
             "govinfo",
             "pursue",
             "doj_epstein",
+            "doe",
             "doj_foia",
             "fbi_vault",
             "frus",

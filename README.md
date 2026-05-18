@@ -13,8 +13,8 @@ The Rust MCP server is the primary implementation. The old TypeScript draft has 
 ## Rust MCP Tools
 
 - `list_sources`: list configured FOIA/declassified-document sources, implementation status, caveats, and local OCR fallback status. Returns a top-level object shaped as `{ "ocr": { ... }, "sources": [ ... ] }`; callers should read the `sources` array rather than assuming the response itself is an array.
-- `search_source`: search one external source. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
-- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
+- `search_source`: search one external source. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOE OpenNet, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, and DTIC are wired; DTIC runs in accession/official-URL tracer mode with explicit fragility warnings, and NARA is wired when `FOIA_SEARCH_NARA_API_KEY` is configured.
+- `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOE OpenNet, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
 - `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
@@ -86,6 +86,7 @@ For a compiled binary, set `command` to the built executable path and omit the C
 - `FOIA_SEARCH_FBI_VAULT_BASE_URL`: defaults to `https://vault.fbi.gov`.
 - `FOIA_SEARCH_FRUS_BASE_URL`: defaults to `https://history.state.gov`.
 - `FOIA_SEARCH_DTIC_BASE_URL`: defaults to `https://apps.dtic.mil`.
+- `FOIA_SEARCH_DOE_OPENNET_BASE_URL`: defaults to `https://www.osti.gov`.
 - `FOIA_SEARCH_NOAA_BASE_URL`: defaults to `https://repository.library.noaa.gov`.
 - `FOIA_SEARCH_NSA_BASE_URL`: defaults to `https://www.nsa.gov`.
 - `FOIA_SEARCH_STATE_BASE_URL`: defaults to `https://foia.state.gov`.
