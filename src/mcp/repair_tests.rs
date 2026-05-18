@@ -5,6 +5,7 @@ use crate::store::{
     ChunkInput, ContentAddressedStore, DocumentKey, PageInput, SqliteStore, TextSource,
     UpsertDocument,
 };
+use rmcp::model::ErrorCode;
 use std::fs;
 
 #[test]
@@ -81,6 +82,26 @@ fn compact_next_actions_are_operator_gated() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
+fn bad_confirmation_maps_to_invalid_params() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = seed_fixture()?;
+    let error = apply_derived_artifact_repairs(
+        &fixture.store,
+        &fixture.files,
+        fixture.document_id(),
+        "apply derived artifact repairs",
+    )
+    .expect_err("wrong confirmation should fail")
+    .into_mcp_error();
+
+    assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
+    assert!(error
+        .message
+        .contains("confirmation must exactly match 'apply derived artifact repairs for cia:CREST-repair-surface'"));
+
+    Ok(())
+}
+
+#[test]
 fn apply_requires_confirmation_and_is_idempotent() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = seed_fixture()?;
 
@@ -139,6 +160,47 @@ fn apply_requires_confirmation_and_is_idempotent() -> Result<(), Box<dyn std::er
     assert_eq!(second.rewritten, 0);
     assert_eq!(second.already_current, 0);
     assert_eq!(second.skipped_manual_review, 1);
+
+    Ok(())
+}
+
+#[test]
+fn mcp_apply_does_not_mutate_canonical_tables() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = seed_fixture()?;
+    let confirmation = format!(
+        "apply derived artifact repairs for {}",
+        fixture.document_id()
+    );
+    let before_documents = row_count(&fixture.store, "documents")?;
+    let before_pages = row_count(&fixture.store, "pages")?;
+    let before_chunks = row_count(&fixture.store, "chunks")?;
+    let before_chunk_fts = row_count(&fixture.store, "chunk_fts")?;
+    let before_page_text = fixture
+        .store
+        .get_page_text(fixture.document_id(), 1, 1)?
+        .remove(0)
+        .text;
+
+    apply_derived_artifact_repairs(
+        &fixture.store,
+        &fixture.files,
+        fixture.document_id(),
+        &confirmation,
+    )
+    .expect("apply derived artifact repairs");
+
+    assert_eq!(before_documents, row_count(&fixture.store, "documents")?);
+    assert_eq!(before_pages, row_count(&fixture.store, "pages")?);
+    assert_eq!(before_chunks, row_count(&fixture.store, "chunks")?);
+    assert_eq!(before_chunk_fts, row_count(&fixture.store, "chunk_fts")?);
+    assert_eq!(
+        before_page_text,
+        fixture
+            .store
+            .get_page_text(fixture.document_id(), 1, 1)?
+            .remove(0)
+            .text
+    );
 
     Ok(())
 }
@@ -312,4 +374,12 @@ fn seed_fixture() -> Result<RepairFixture, Box<dyn std::error::Error>> {
         files,
         document_key,
     })
+}
+
+fn row_count(store: &SqliteStore, table: &str) -> Result<i64, Box<dyn std::error::Error>> {
+    let query = format!("SELECT count(*) FROM {table}");
+    let count = store
+        .connection()
+        .query_row(query.as_str(), [], |row| row.get(0))?;
+    Ok(count)
 }

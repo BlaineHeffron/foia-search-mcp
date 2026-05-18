@@ -31,7 +31,7 @@ use crate::{
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
     #[schemars(
-        description = "Single source to search: aaro, cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
+        description = "Single source to search: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
     )]
     source: String,
     #[schemars(description = "Research query to send to the source adapter")]
@@ -45,7 +45,7 @@ struct SearchSourceParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSourceRecordParams {
     #[schemars(
-        description = "Source adapter name: aaro, cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
+        description = "Source adapter name: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
     )]
     source: String,
     #[schemars(description = "Source record ID or canonical source URL")]
@@ -73,7 +73,7 @@ struct SearchLocalDocumentsParams {
     #[schemars(description = "Keyword query over locally ingested document text and metadata")]
     query: String,
     #[schemars(
-        description = "Optional source filter: aaro, cia, nara, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
+        description = "Optional source filter: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
     )]
     source: Option<String>,
     #[schemars(description = "Maximum local results to return. Default 10, maximum 100")]
@@ -547,6 +547,27 @@ mod tests {
         assert!(error.message.contains("invalid source"));
         let expected_sources = crate::mcp::sources::VALID_SOURCES.join(", ");
         assert!(error.message.contains(&expected_sources));
+    }
+
+    #[test]
+    fn source_parameter_schema_descriptions_list_all_valid_sources() {
+        let schemas = [
+            serde_json::to_string(&schemars::schema_for!(SearchSourceParams))
+                .expect("search_source schema should serialize"),
+            serde_json::to_string(&schemars::schema_for!(GetSourceRecordParams))
+                .expect("get_source_record schema should serialize"),
+            serde_json::to_string(&schemars::schema_for!(SearchLocalDocumentsParams))
+                .expect("search_local_documents schema should serialize"),
+        ];
+
+        for schema in schemas {
+            for source in crate::mcp::sources::VALID_SOURCES {
+                assert!(
+                    schema.contains(source),
+                    "source schema description should mention {source}"
+                );
+            }
+        }
     }
 
     #[test]

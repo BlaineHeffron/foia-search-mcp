@@ -2,6 +2,7 @@ use crate::mcp::fts_repair::{
     apply_sqlite_fts_repairs, plan_sqlite_fts_repairs, report_sqlite_fts_drift,
 };
 use crate::store::{ChunkInput, DocumentKey, PageInput, SqliteStore, TextSource, UpsertDocument};
+use rmcp::model::ErrorCode;
 
 #[test]
 fn report_and_plan_surface_remain_dry_run() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,6 +64,21 @@ fn apply_rejects_bad_confirmation_without_mutation() -> Result<(), Box<dyn std::
         .to_string()
         .contains("confirmation must exactly match 'apply sqlite fts repairs'"));
     assert_eq!(fts_body(&store, key.as_str(), "chunk-1")?, "stale alpha");
+
+    Ok(())
+}
+
+#[test]
+fn bad_confirmation_maps_to_invalid_params() -> Result<(), Box<dyn std::error::Error>> {
+    let (store, _key) = seed_store()?;
+    let error = apply_sqlite_fts_repairs(&store, "apply fts repairs")
+        .expect_err("wrong confirmation should fail")
+        .into_mcp_error();
+
+    assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
+    assert!(error
+        .message
+        .contains("confirmation must exactly match 'apply sqlite fts repairs'"));
 
     Ok(())
 }

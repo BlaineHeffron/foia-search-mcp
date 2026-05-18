@@ -398,7 +398,7 @@ Default behavior should be polite and bounded. Bulk ingestion should require exp
 
 Start with deterministic fixture tests:
 
-- Adapter parsing fixtures for CIA, NARA, GovInfo, PURSUE/war.gov UAP, AARO, DOJ Epstein Library, DOJ component FOIA indexes, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, and DTIC.
+- Adapter parsing fixtures for CIA, NARA, GovInfo, PURSUE/war.gov UAP, AARO, DOJ Epstein Library, DOJ component FOIA indexes, FBI Vault, FRUS, NOAA, DTIC, NSA, State Department Virtual Reading Room, DIA, OSD/Joint Staff, Army, and Navy.
 - Cursor encoding and decoding.
 - Cache hit, stale hit, conditional GET, and 304 behavior.
 - PDF text extraction fixtures.
@@ -425,6 +425,7 @@ Coverage:
 - Use DOJ Epstein Library to find an EFTA data-set PDF while preserving DOJ sensitivity warnings.
 - Use FBI Vault to retrieve a multipart FOIA file with correct source provenance.
 - Use FRUS for a policy document and return source citation metadata.
+- Use DTIC and DoD FOIA Reading Room adapters for official military-history leads while preserving fragility, provenance, and page-boundary caveats.
 - Use the State Department Virtual Reading Room for an official released-document lead while preserving OCR and originating-agency caveats.
 - Handle a scanned PDF that requires OCR.
 - Continue paginated source search using an opaque cursor.
@@ -467,7 +468,7 @@ Add optional OCR dependency detection, extraction-quality scoring, page-level OC
 
 ### Phase 8: Official Source Expansion
 
-Add as many official sources as practical while keeping each adapter policy-pinned and fixture-backed. Current priority order:
+Add as many official sources as practical while keeping each adapter policy-pinned and fixture-backed. Completed official-source expansion now includes:
 
 1. GovInfo live API adapter.
 2. PURSUE / `war.gov` UAP release adapter.
@@ -478,13 +479,14 @@ Add as many official sources as practical while keeping each adapter policy-pinn
 7. FRUS.
 8. NOAA Institutional Repository.
 9. DTIC.
-10. State Department Virtual Reading Room.
-11. DIA FOIA Electronic Reading Room.
-12. OSD/Joint Staff FOIA Reading Room.
-13. Army FOIA Reading Room.
-14. Navy FOIA Reading Room family.
+10. NSA FOIA Reading Room.
+11. State Department Virtual Reading Room.
+12. DIA FOIA Electronic Reading Room.
+13. OSD/Joint Staff FOIA Reading Room.
+14. Army FOIA Reading Room.
+15. Navy FOIA Reading Room family.
 
-Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
+Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, runtime registration, source-status/MCP validation text, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
 
 ### Phase 9: Advanced Indexing
 
@@ -514,4 +516,4 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - DIA FOIA Electronic Reading Room is the target entry point for DIA FOIA leads and linked FileId/PDF assets: <https://www.dia.mil/FOIA/FOIA-Electronic-Reading-Room/>
 - OSD/Joint Staff FOIA Reading Room is the target entry point for WHS/ESD OSD/Joint Staff FOIA leads and linked PDFs: <https://www.esd.whs.mil/FOID/Reading-Room/> and <https://www.esd.whs.mil/Records-Declass/FOIA/Reading-Room/Reading-Room-List_2/>
 - Army FOIA Reading Room is the target entry point for Army FOIA leads and linked documents: <https://foia.army.mil/>
-- Navy FOIA Reading Room family first slice targets official Department of the Navy SECNAV reading-room surfaces and component reading-room pages under <https://www.secnav.navy.mil/foia/readingroom/SitePages/Home.aspx>, <https://www.secnav.navy.mil/navaudsvc/foia-reading-room>, and <https://www.secnav.navy.mil/ig/Pages/foia2.aspx>.
+- Navy FOIA Reading Room family target entry points include the Department of the Navy FOIA Reading Room, Naval Audit Service reading room, and Naval Inspector General FOIA page under `secnav.navy.mil`: <https://www.secnav.navy.mil/foia/readingroom/SitePages/Home.aspx>, <https://www.secnav.navy.mil/navaudsvc/foia-reading-room>, and <https://www.secnav.navy.mil/ig/Pages/foia2.aspx>

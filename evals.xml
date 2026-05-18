@@ -1,7 +1,7 @@
 <evals>
   <eval id="1">
     <question>List the available FOIA/declassified-document sources and choose where to start a search for CIA Reading Room material about weather modification.</question>
-    <expected>Call list_sources first; identify cia as enabled and note that other sources are known but not fully wired before choosing search_source with source "cia".</expected>
+    <expected>Call list_sources first; identify cia as a wired source for CIA Reading Room material and note other available official-source adapters only when they are relevant before choosing search_source with source "cia".</expected>
   </eval>
   <eval id="2">
     <question>Find CIA Reading Room records about weather modification, then fetch the most relevant document metadata.</question>
@@ -17,7 +17,7 @@
   </eval>
   <eval id="5">
     <question>Search for HAARP ionospheric heating documents. If CIA has no useful result, recover by choosing another official source.</question>
-    <expected>Call list_sources, then search_source with source "cia"; if results are empty or off-topic, explain which adapters are enabled, distinguish configured adapters from future source guidance, and recommend the most relevant official source entry points rather than inventing results.</expected>
+    <expected>Call list_sources, then search_source with source "cia"; if results are empty or off-topic, explain which official-source adapters are wired, distinguish configured and unavailable sources such as NARA without an API key, and recommend the most relevant official source entry points rather than inventing results.</expected>
   </eval>
   <eval id="6">
     <question>Start ingesting a CIA document, then check whether the ingestion job was persisted.</question>
@@ -53,7 +53,7 @@
   </eval>
   <eval id="14">
     <question>Build a citation trail for weather modification military history using only official repositories.</question>
-    <expected>Call list_sources; use search_source/get_source_record for CIA leads; use search_local_documents/get_document/get_document_text for already ingested material; clearly distinguish implemented CIA/local flows from source suggestions that are not yet directly searchable.</expected>
+    <expected>Call list_sources; use search_source/get_source_record for wired official-source leads such as CIA, DTIC, NSA, DIA, OSD/Joint Staff, Army, or Navy when relevant; use search_local_documents/get_document/get_document_text for already ingested material; clearly distinguish live adapters, configured-only sources, and manual fallback entry points.</expected>
   </eval>
   <eval id="15">
     <question>A NARA search cannot run because no API key is configured. Explain what happened and keep the user moving.</question>
