@@ -58,6 +58,13 @@ impl Config {
                 note: "AARO UAP historical-records adapter is available for official aaro.mil records and case-resolution leads; preserve agency/release metadata and prefer PDF assets while treating image/video media links as metadata assets.".to_string(),
             },
             SourceStatus {
+                name: "army".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "Army FOIA Reading Room adapter is available for official foia.army.mil leads; prefer PDF assets and verify page boundaries before citation."
+                    .to_string(),
+            },
+            SourceStatus {
                 name: "cia".to_string(),
                 enabled: false,
                 status: "planned".to_string(),
@@ -220,6 +227,27 @@ mod tests {
         assert_eq!(aaro.status, "available");
         assert!(aaro.note.contains("AARO UAP historical-records adapter"));
         assert!(aaro.note.contains("prefer PDF assets"));
+    }
+
+    #[test]
+    fn source_status_reports_army_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let source = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "army")
+            .expect("army source should be listed");
+
+        assert_eq!(source.status, "available");
+        assert!(source.note.contains("foia.army.mil"));
+        assert!(source.note.contains("verify page boundaries"));
     }
 
     #[test]

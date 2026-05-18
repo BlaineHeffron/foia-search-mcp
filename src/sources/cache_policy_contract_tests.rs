@@ -1,10 +1,10 @@
 use super::{
-    aaro::AaroAdapter, cia::CiaAdapter, dia::DiaAdapter, doj_epstein::DojEpsteinAdapter,
-    doj_foia::DojFoiaAdapter, dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter,
-    govinfo::GovInfoAdapter, nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter,
-    osd_joint_staff::OsdJointStaffAdapter, pursue::PursueAdapter, state::StateAdapter, CachePolicy,
-    SearchOptions, SearchPage, SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord,
-    SourceStatus,
+    aaro::AaroAdapter, army::ArmyAdapter, cia::CiaAdapter, dia::DiaAdapter,
+    doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter, dtic::DticAdapter,
+    fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter, nara::NaraAdapter,
+    noaa::NoaaAdapter, nsa::NsaAdapter, osd_joint_staff::OsdJointStaffAdapter,
+    pursue::PursueAdapter, state::StateAdapter, CachePolicy, SearchOptions, SearchPage,
+    SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
 
 struct DummyAdapter;
@@ -44,6 +44,12 @@ fn source_adapter_default_cache_policy_is_respect_source_headers() {
 #[test]
 fn aaro_adapter_cache_policy_remains_respect_source_headers() {
     let adapter = AaroAdapter::default();
+    assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
+}
+
+#[test]
+fn army_adapter_cache_policy_remains_respect_source_headers() {
+    let adapter = ArmyAdapter::default();
     assert_eq!(adapter.cache_policy(), CachePolicy::RespectSourceHeaders);
 }
 

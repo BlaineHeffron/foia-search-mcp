@@ -371,6 +371,18 @@ Additional checkpoint after the SQLite FTS MCP exposure slice:
   workflow alongside derived `text/`/`ocr/` artifact repair. No startup,
   worker, or runtime auto-repair path was added.
 
+Additional checkpoint after the Army FOIA Reading Room adapter slice:
+
+- Added `src/sources/army.rs` and split live helper modules for an official
+  `army` adapter targeting `https://foia.army.mil/` and official
+  `/Home/publicRecords/<category>` listing pages.
+- The adapter is conservative and fixture-backed: source search parses official
+  Army FOIA Reading Room table/document leads, `get_record` accepts returned
+  `Home/DocContent/<id>` ids or official Army URLs, and `list_assets` prefers
+  PDFs while retaining non-PDF document assets as metadata leads.
+- Army keeps default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
@@ -394,12 +406,11 @@ actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
-- Phase 8 source expansion is complete through the OSD/Joint Staff FOIA
-  Reading Room. If source expansion resumes, next source-adapter todo order
-  should be:
-  Army FOIA Reading Room, then the broader Navy reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
-  source warning/citation notes, cache and redirect policy contracts, and at
-  least one eval.
+- Phase 8 source expansion is complete through the Army FOIA Reading Room. If
+  source expansion resumes, the next source-adapter todo order should be the
+  broader Navy reading-room family if DoD coverage still needs to expand. Each
+  source needs fixtures, source warning/citation notes, cache and redirect
+  policy contracts, and at least one eval.
 - Treat DOJ Epstein Library as a sensitive mixed-media source. Default to
   metadata/PDF ingestion, preserve DOJ privacy/victim-identification warnings in
   search and local retrieval output, and list images/audio/video without

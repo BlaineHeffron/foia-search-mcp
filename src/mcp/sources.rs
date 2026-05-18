@@ -4,6 +4,7 @@ use crate::errors::FoiaSearchError;
 
 pub(crate) const VALID_SOURCES: &[&str] = &[
     "aaro",
+    "army",
     "cia",
     "nara",
     "govinfo",
@@ -37,6 +38,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
     match adapter_name {
         "aaro" => Some(
             "AARO adapter is wired for official aaro.mil UAP records and case-resolution leads; preserve agency/release metadata and prefer PDF assets while treating media links as metadata assets."
+                .to_owned(),
+        ),
+        "army" => Some(
+            "Army FOIA Reading Room adapter is wired for official foia.army.mil leads; prefer PDF assets and verify page boundaries before citation."
                 .to_owned(),
         ),
         "cia" => Some("CIA Reading Room adapter is wired for HTTP search and record fetch.".to_owned()),
