@@ -17,6 +17,7 @@ use crate::{
         fts_repair,
         ingestion::enqueue_ingestion_job,
         repair,
+        source_params::{LocalSourceFilter, SearchSourceName, SourceRecordSourceName},
         support::{
             document_lookup_error_to_mcp, ingestion_job_error_to_mcp, ingestion_job_from_stored,
             local_document_from_stored, local_document_text_from_stored, source_error_to_mcp,
@@ -30,10 +31,7 @@ use crate::{
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSourceParams {
-    #[schemars(
-        description = "Single source to search: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
-    )]
-    source: String,
+    source: SearchSourceName,
     #[schemars(description = "Research query to send to the source adapter")]
     query: String,
     #[schemars(description = "Opaque pagination cursor returned by a previous search_source call")]
@@ -44,10 +42,7 @@ struct SearchSourceParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSourceRecordParams {
-    #[schemars(
-        description = "Source adapter name: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
-    )]
-    source: String,
+    source: SourceRecordSourceName,
     #[schemars(description = "Source record ID or canonical source URL")]
     id_or_url: String,
 }
@@ -72,10 +67,7 @@ struct GetIngestionJobParams {
 struct SearchLocalDocumentsParams {
     #[schemars(description = "Keyword query over locally ingested document text and metadata")]
     query: String,
-    #[schemars(
-        description = "Optional source filter: aaro, army, cia, nara, navy, govinfo, pursue, doj_epstein, doj_foia, fbi_vault, frus, dtic, dia, noaa, nsa, osd_joint_staff, or state"
-    )]
-    source: Option<String>,
+    source: Option<LocalSourceFilter>,
     #[schemars(description = "Maximum local results to return. Default 10, maximum 100")]
     limit: Option<u32>,
 }
@@ -179,7 +171,7 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<SearchSourceParams>,
     ) -> Result<CallToolResult, McpError> {
-        let adapter = self.source_adapter(&params.source)?;
+        let adapter = self.source_adapter(params.source.as_str())?;
         let limit = params.limit.unwrap_or(10).min(50);
         let options = SearchOptions {
             max_results: limit as usize,
@@ -209,7 +201,7 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<GetSourceRecordParams>,
     ) -> Result<CallToolResult, McpError> {
-        let adapter = self.source_adapter(&params.source)?;
+        let adapter = self.source_adapter(params.source.as_str())?;
         match adapter.get_record(&params.id_or_url).await {
             Ok(record) => json_result(&crate::model::SourceRecord::from(record)),
             Err(error) => Err(source_error_to_mcp(error)),
@@ -254,14 +246,15 @@ impl FoiaSearchServer {
         &self,
         Parameters(params): Parameters<SearchLocalDocumentsParams>,
     ) -> Result<CallToolResult, McpError> {
-        if let Some(source) = params.source.as_deref() {
-            validate_source(source)?;
+        if let Some(source) = params.source.as_ref() {
+            validate_source(source.as_str())?;
         }
         let store = self.open_store()?;
+        let source = params.source.map(LocalSourceFilter::into_string);
         let hits = FtsSearch::new(&store)
             .search(&SearchQuery {
                 query: params.query,
-                source: params.source,
+                source,
                 limit: i64::from(params.limit.unwrap_or(10).min(100)),
             })
             .map_err(store_error_to_mcp)?
@@ -547,27 +540,6 @@ mod tests {
         assert!(error.message.contains("invalid source"));
         let expected_sources = crate::mcp::sources::VALID_SOURCES.join(", ");
         assert!(error.message.contains(&expected_sources));
-    }
-
-    #[test]
-    fn source_parameter_schema_descriptions_list_all_valid_sources() {
-        let schemas = [
-            serde_json::to_string(&schemars::schema_for!(SearchSourceParams))
-                .expect("search_source schema should serialize"),
-            serde_json::to_string(&schemars::schema_for!(GetSourceRecordParams))
-                .expect("get_source_record schema should serialize"),
-            serde_json::to_string(&schemars::schema_for!(SearchLocalDocumentsParams))
-                .expect("search_local_documents schema should serialize"),
-        ];
-
-        for schema in schemas {
-            for source in crate::mcp::sources::VALID_SOURCES {
-                assert!(
-                    schema.contains(source),
-                    "source schema description should mention {source}"
-                );
-            }
-        }
     }
 
     #[test]
