@@ -14,6 +14,8 @@ mod ingestion_tests;
 #[cfg(test)]
 mod repair_tests;
 #[cfg(test)]
+mod schema_tests;
+#[cfg(test)]
 mod support_tests;
 
 pub use tools::FoiaSearchServer;

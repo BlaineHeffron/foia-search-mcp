@@ -61,7 +61,7 @@
   </eval>
   <eval id="16">
     <question>Compare best official sources for ENMOD treaty text versus Project Stormfury technical reports.</question>
-    <expected>Call list_sources; map ENMOD to legal/government publication sources and Stormfury to NOAA/NARA/DTIC-style repositories while stating which are currently direct MCP adapters and which are source-status guidance.</expected>
+    <expected>Call list_sources; map ENMOD to GovInfo/legal/government publication sources and Stormfury to NOAA/NARA/DTIC-style repositories while stating which are currently direct MCP adapters and which are source-status guidance.</expected>
   </eval>
   <eval id="17">
     <question>Find a PURSUE/war.gov UAP release-tranche record and retrieve normalized official metadata for one returned item.</question>
@@ -138,5 +138,9 @@
   <eval id="doj-epstein-local-warning-persistence">
     <question>After ingesting a DOJ Epstein PDF lead, search and retrieve the local document while preserving sensitivity warnings.</question>
     <expected>Call search_source with source "doj_epstein", call get_source_record for a PDF-bearing lead, then call ingest_document for the source-prefixed id and inspect get_ingestion_job until completion or queued status is reported. Use search_local_documents and get_document/get_document_text for the ingested document; preserve the DOJ privacy/victim-identification warning plus citation_note and terms_note in local search and retrieval output, and do not imply image/audio/video assets were automatically ingested.</expected>
+  </eval>
+  <eval id="direct-ingestion-guardrail">
+    <question>A user asks to ingest a raw HTTPS PDF URL or a local file path directly. Recover without bypassing source controls.</question>
+    <expected>Call ingest_document with the direct URL or local path only if needed to surface the policy error; recognize that direct URL and local-file ingestion are disabled by default for MCP callers; call list_sources or search_source/get_source_record to obtain a source-approved, source-prefixed document_id, then ingest that id instead of bypassing source validation.</expected>
   </eval>
 </evals>

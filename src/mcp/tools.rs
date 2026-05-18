@@ -141,7 +141,7 @@ pub struct FoiaSearchServer {
     ingestion_worker: Option<IngestionWorkerKick>,
 }
 
-#[tool_router]
+#[tool_router(vis = "pub(crate)")]
 impl FoiaSearchServer {
     #[tool(
         description = "List FOIA/declassified-document sources, their implementation status, and configuration notes. Use this before search_source when choosing where to search."
