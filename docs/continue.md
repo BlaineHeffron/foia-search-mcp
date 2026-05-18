@@ -262,6 +262,20 @@ Additional checkpoint after the State Department Virtual Reading Room adapter sl
   originating-agency caveat; page citations still require PDF ingestion and
   page-boundary verification.
 
+Additional checkpoint after the DIA FOIA Electronic Reading Room adapter slice:
+
+- Added `src/sources/dia.rs` and split live helper modules for the official
+  DIA FOIA Electronic Reading Room entry point at
+  `https://www.dia.mil/FOIA/FOIA-Electronic-Reading-Room/`.
+- The adapter is conservative and fixture-backed: source search parses official
+  DIA reading-room page links, `get_record` accepts returned source IDs or
+  official DIA URLs, and `list_assets` prefers PDF/FileId assets while retaining
+  non-PDF official links as metadata leads.
+- DIA keeps default source policy contracts:
+  `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`. Citation
+  notes warn that page citations require PDF ingestion and page-boundary
+  verification.
+
 Current ingestion slices now include:
 
 - Durable ingestion job lifecycle APIs with leases, stages, progress, warnings, terminal states, and resume-oriented tests.
@@ -363,10 +377,9 @@ actions explicit, operator-confirmed, and covered by eval guardrails.
 
 ## Next Tasks
 
-- Phase 8 source expansion is complete through the State Department Virtual
+- Phase 8 source expansion is complete through the DIA FOIA Electronic
   Reading Room. If source expansion resumes, next source-adapter todo order
   should be:
-  DIA FOIA Electronic Reading Room,
   OSD/Joint Staff reading room, Army FOIA Reading Room, then the broader Navy
   reading-room family if DoD coverage still needs to expand. Each source needs fixtures,
   source warning/citation notes, cache and redirect policy contracts, and at

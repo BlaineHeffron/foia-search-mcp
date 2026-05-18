@@ -1,9 +1,9 @@
 use super::{
-    aaro::AaroAdapter, cia::CiaAdapter, doj_epstein::DojEpsteinAdapter, doj_foia::DojFoiaAdapter,
-    dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter, govinfo::GovInfoAdapter,
-    nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter, pursue::PursueAdapter,
-    state::StateAdapter, CachePolicy, SearchOptions, SearchPage, SourceAdapter, SourceAsset,
-    SourceError, SourceFuture, SourceRecord, SourceStatus,
+    aaro::AaroAdapter, cia::CiaAdapter, dia::DiaAdapter, doj_epstein::DojEpsteinAdapter,
+    doj_foia::DojFoiaAdapter, dtic::DticAdapter, fbi_vault::FbiVaultAdapter, frus::FrusAdapter,
+    govinfo::GovInfoAdapter, nara::NaraAdapter, noaa::NoaaAdapter, nsa::NsaAdapter,
+    pursue::PursueAdapter, state::StateAdapter, CachePolicy, SearchOptions, SearchPage,
+    SourceAdapter, SourceAsset, SourceError, SourceFuture, SourceRecord, SourceStatus,
 };
 use crate::ingest::RedirectPolicy;
 
@@ -102,6 +102,12 @@ fn frus_adapter_redirect_policy_remains_deny_by_default() {
 #[test]
 fn dtic_adapter_redirect_policy_remains_deny_by_default() {
     let adapter = DticAdapter::default();
+    assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
+}
+
+#[test]
+fn dia_adapter_redirect_policy_remains_deny_by_default() {
+    let adapter = DiaAdapter::default();
     assert_eq!(adapter.redirect_policy(), RedirectPolicy::Deny);
 }
 

@@ -12,6 +12,7 @@ pub(crate) const VALID_SOURCES: &[&str] = &[
     "doj_foia",
     "frus",
     "dtic",
+    "dia",
     "noaa",
     "nsa",
     "state",
@@ -65,6 +66,10 @@ pub(crate) fn list_sources_note(adapter_name: &str, enabled: bool) -> Option<Str
         ),
         "dtic" => Some(
             "DTIC adapter is wired in fragile accession/official-URL tracer mode; broad public search endpoints are not treated as stable APIs, so verify official citation/PDF URLs and preserve distribution/public-release warnings."
+                .to_owned(),
+        ),
+        "dia" => Some(
+            "DIA FOIA Electronic Reading Room adapter is wired for official dia.mil FOIA leads; prefer PDF assets and verify page boundaries before citation."
                 .to_owned(),
         ),
         "fbi_vault" => Some(

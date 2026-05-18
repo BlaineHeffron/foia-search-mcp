@@ -60,6 +60,7 @@ src/
     noaa.rs
     nsa.rs
     state.rs
+    dia.rs
   ingest/
     mod.rs
     jobs.rs
@@ -149,7 +150,7 @@ Core fields:
 
 - `id`: user-facing stable ID, usually `<source>:<source_id>`, never used directly as a file path.
 - `document_key`: filesystem-safe internal key used for derived text/OCR paths.
-- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, or future adapter name.
+- `source`: `cia`, `nara`, `govinfo`, `frus`, `dtic`, `noaa`, `nsa`, `state`, `dia`, or future adapter name.
 - `source_id`: ID from the original source.
 - `title`
 - `date`
@@ -263,6 +264,8 @@ DTIC is sixth. Treat public DTIC as a fragile adapter until a stable official AP
 NSA FOIA Reading Room is available as an official-source adapter for `nsa.gov` Reading Room and FOIA Reports and Releases leads. Treat results as citation leads: prefer linked PDFs, preserve official page/PDF URLs, and require PDF ingestion/page-boundary verification before page-specific citation.
 
 State Department Virtual Reading Room is available as an official-source adapter for `foia.state.gov` Search Released Documents and FOIA Library leads. Treat results as citation leads: preserve State OCR/unavailable-field/originating-agency caveats, prefer linked PDFs, and require PDF ingestion/page-boundary verification before page-specific citation.
+
+DIA FOIA Electronic Reading Room is available as an official-source adapter for `www.dia.mil` FOIA Electronic Reading Room leads. Treat results as citation leads: preserve official DIA page/PDF provenance, prefer linked PDF/FileId assets, and require PDF ingestion/page-boundary verification before page-specific citation.
 
 PURSUE / War Department UAP releases should be added as an official-source adapter after GovInfo or alongside the UAP-specific source batch. Target `https://www.war.gov/ufo/` and official linked release assets first. Preserve release tranche metadata, list PDFs/images/videos as assets, ingest PDFs by default, and leave images/videos metadata-only until media handling is explicitly designed.
 
@@ -467,6 +470,7 @@ Add as many official sources as practical while keeping each adapter policy-pinn
 8. NOAA Institutional Repository.
 9. DTIC.
 10. State Department Virtual Reading Room.
+11. DIA FOIA Electronic Reading Room.
 
 Each adapter must ship with fixtures, rate/cache policy, redirect policy, source warning/citation notes, and at least one eval. Sensitive mixed-media collections such as DOJ Epstein should default to metadata/PDF ingestion and list images/audio/video without automatic ingestion until explicit media safety rules exist.
 
@@ -495,3 +499,4 @@ Evaluate Tantivy and LanceDB reuse from paper-search. Move to Tantivy when FTS5 
 - Office of the Historian documents the FRUS catalog/API and XML/TEI-backed publication model: <https://history.state.gov/developer>
 - NOAA Institutional Repository is the target entry point for NOAA-authored or NOAA-funded publications and reports: <https://repository.library.noaa.gov/>
 - State Department FOIA Library and Virtual Reading Room search are the target entry points for released Department of State FOIA records: <https://foia.state.gov/> and <https://foia.state.gov/Search/Search.aspx>
+- DIA FOIA Electronic Reading Room is the target entry point for DIA FOIA leads and linked FileId/PDF assets: <https://www.dia.mil/FOIA/FOIA-Electronic-Reading-Room/>

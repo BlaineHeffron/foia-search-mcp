@@ -123,6 +123,13 @@ impl Config {
                 note: "DTIC adapter is available in fragile accession/official-URL tracer mode; broad public search endpoints are not treated as stable APIs, so preserve DTIC fragility/distribution warnings and verify official citation/PDF URLs.".to_string(),
             },
             SourceStatus {
+                name: "dia".to_string(),
+                enabled: false,
+                status: "available".to_string(),
+                note: "DIA FOIA Electronic Reading Room adapter is available for official dia.mil FOIA leads; prefer PDF assets and verify page boundaries before citation."
+                    .to_string(),
+            },
+            SourceStatus {
                 name: "noaa".to_string(),
                 enabled: false,
                 status: "available".to_string(),
@@ -353,6 +360,27 @@ mod tests {
         assert_eq!(dtic.status, "available");
         assert!(dtic.note.contains("accession/official-URL tracer mode"));
         assert!(dtic.note.contains("broad public search endpoints"));
+    }
+
+    #[test]
+    fn source_status_reports_dia_available_adapter_note() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/foia-search-test"),
+            nara_api_key: None,
+            nara_api_base_url: "https://catalog.archives.gov/api/v2".to_string(),
+            ocr_fallback_policy: OcrFallbackPolicy::off(),
+            ocr_backend: OcrBackendConfig::default(),
+        };
+
+        let dia = config
+            .source_status()
+            .into_iter()
+            .find(|source| source.name == "dia")
+            .expect("dia source should be listed");
+
+        assert_eq!(dia.status, "available");
+        assert!(dia.note.contains("dia.mil"));
+        assert!(dia.note.contains("verify page boundaries"));
     }
 
     #[test]
