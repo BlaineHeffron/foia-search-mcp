@@ -23,9 +23,20 @@ pub struct SourceRecord {
     pub origin_url: Option<String>,
     pub document_url: Option<String>,
     pub pdf_url: Option<String>,
+    pub assets: Vec<SourceAsset>,
     pub metadata_json: Value,
     pub citation_note: Option<String>,
     pub terms_note: Option<String>,
+    pub source_warning: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceAsset {
+    pub asset_url: String,
+    pub label: String,
+    pub mime_type: Option<String>,
+    pub role: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -206,6 +217,8 @@ pub struct SqliteFtsRepairApplyResponse {
 impl From<crate::sources::SourceRecord> for SourceRecord {
     fn from(record: crate::sources::SourceRecord) -> Self {
         let metadata_json = serde_json::to_value(record.metadata).unwrap_or(Value::Null);
+        let source_warning = source_warning_from_metadata(&metadata_json);
+        let warnings = source_warning.iter().cloned().collect();
         Self {
             id: record.id,
             document_key: Some(record.document_key),
@@ -219,9 +232,145 @@ impl From<crate::sources::SourceRecord> for SourceRecord {
             origin_url: Some(record.origin_url),
             document_url: Some(record.document_url),
             pdf_url: record.pdf_url,
+            assets: record
+                .attachments
+                .into_iter()
+                .map(SourceAsset::from)
+                .collect(),
             metadata_json,
             citation_note: record.citation_note,
             terms_note: record.terms_note,
+            source_warning,
+            warnings,
+        }
+    }
+}
+
+impl From<crate::sources::SourceAsset> for SourceAsset {
+    fn from(asset: crate::sources::SourceAsset) -> Self {
+        Self {
+            asset_url: asset.asset_url,
+            label: asset.label,
+            mime_type: asset.mime_type,
+            role: source_asset_role_name(&asset.role).to_owned(),
+        }
+    }
+}
+
+pub(crate) fn source_warning_from_metadata(metadata: &Value) -> Option<String> {
+    metadata
+        .get("source_metadata")
+        .and_then(|source_metadata| source_metadata.get("source_warning"))
+        .or_else(|| metadata.get("source_warning"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|warning| !warning.is_empty())
+        .map(str::to_owned)
+}
+
+fn source_asset_role_name(role: &crate::sources::SourceAssetRole) -> &'static str {
+    match role {
+        crate::sources::SourceAssetRole::Pdf => "pdf",
+        crate::sources::SourceAssetRole::Html => "html",
+        crate::sources::SourceAssetRole::OcrText => "ocr_text",
+        crate::sources::SourceAssetRole::Transcript => "transcript",
+        crate::sources::SourceAssetRole::Image => "image",
+        crate::sources::SourceAssetRole::Other => "other",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sources::{SourceAssetRole, SourceMetadata};
+
+    use super::*;
+
+    #[test]
+    fn source_record_response_promotes_warning_and_assets() {
+        let mut metadata = SourceMetadata::new();
+        metadata.insert(
+            "source_warning".to_owned(),
+            "DOJ privacy and victim-identification warning".to_owned(),
+        );
+
+        let response = SourceRecord::from(crate::sources::SourceRecord {
+            id: "doj_epstein:data-set-1-files".to_owned(),
+            document_key: "doc_doj_epstein_data_set_1_files".to_owned(),
+            source: "doj_epstein",
+            source_id: "data-set-1-files".to_owned(),
+            title: "DOJ Epstein data set 1 files".to_owned(),
+            date: None,
+            collection: Some("DOJ Epstein Library".to_owned()),
+            record_group: Some("efta_data_set".to_owned()),
+            description: None,
+            origin_url: "https://www.justice.gov/epstein/doj-disclosures".to_owned(),
+            document_url: "https://www.justice.gov/epstein/doj-disclosures/data-set-1-files"
+                .to_owned(),
+            pdf_url: Some("https://www.justice.gov/epstein/files/report.pdf".to_owned()),
+            metadata,
+            attachments: vec![
+                asset(
+                    SourceAssetRole::Pdf,
+                    "https://www.justice.gov/epstein/files/report.pdf",
+                    Some("application/pdf"),
+                ),
+                asset(
+                    SourceAssetRole::Image,
+                    "https://www.justice.gov/epstein/files/page.jpg",
+                    Some("image/jpeg"),
+                ),
+                asset(
+                    SourceAssetRole::Other,
+                    "https://www.justice.gov/epstein/files/video.mp4",
+                    Some("video/mp4"),
+                ),
+            ],
+            text_preview: None,
+            citation_note: Some("Cite official DOJ page/PDF URL.".to_owned()),
+            terms_note: Some("Sensitive DOJ Epstein Library content.".to_owned()),
+        });
+
+        assert_eq!(
+            response.source_warning.as_deref(),
+            Some("DOJ privacy and victim-identification warning")
+        );
+        assert_eq!(
+            response.warnings,
+            vec!["DOJ privacy and victim-identification warning".to_owned()]
+        );
+        assert_eq!(response.assets[0].role, "pdf");
+        assert_eq!(response.assets[1].role, "image");
+        assert_eq!(response.assets[2].mime_type.as_deref(), Some("video/mp4"));
+        assert_eq!(
+            response.metadata_json["source_warning"],
+            "DOJ privacy and victim-identification warning"
+        );
+    }
+
+    #[test]
+    fn source_warning_helper_accepts_persisted_source_metadata_shape() {
+        let metadata = serde_json::json!({
+            "source_metadata": {
+                "source_warning": " DOJ persisted warning "
+            }
+        });
+
+        assert_eq!(
+            source_warning_from_metadata(&metadata).as_deref(),
+            Some("DOJ persisted warning")
+        );
+    }
+
+    fn asset(
+        role: SourceAssetRole,
+        asset_url: &str,
+        mime_type: Option<&str>,
+    ) -> crate::sources::SourceAsset {
+        crate::sources::SourceAsset {
+            asset_url: asset_url.to_owned(),
+            label: format!("{role:?} asset"),
+            mime_type: mime_type.map(str::to_owned),
+            role,
         }
     }
 }

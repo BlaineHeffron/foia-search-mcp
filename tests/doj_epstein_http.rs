@@ -50,6 +50,12 @@ async fn search_returns_doj_leads_with_sensitive_warning_and_category_provenance
         .warnings
         .iter()
         .any(|warning| warning.contains("sensitive")));
+    assert_sensitive_warning_mentions_privacy_and_victims(
+        page.records[0]
+            .metadata
+            .get("source_warning")
+            .expect("record should carry sensitive source warning"),
+    );
 
     let requests = requests.join().expect("request capture should finish");
     assert_eq!(requests.len(), 1);
@@ -127,6 +133,12 @@ async fn get_record_data_set_source_id_prefers_pdf_and_preserves_metadata() {
     assert_eq!(record.metadata.get("data_set"), Some(&"1".to_owned()));
     assert_eq!(record.attachments[0].role, SourceAssetRole::Pdf);
     assert_eq!(record.attachments[3].role, SourceAssetRole::Image);
+    assert_sensitive_warning_mentions_privacy_and_victims(
+        record
+            .metadata
+            .get("source_warning")
+            .expect("detail record should carry sensitive source warning"),
+    );
     assert!(record
         .citation_note
         .as_deref()
@@ -204,7 +216,24 @@ async fn get_record_bop_video_classifies_media_and_keeps_pdf_preferred() {
         .attachments
         .iter()
         .any(|asset| asset.mime_type.as_deref() == Some("video/mp4")));
+    assert_eq!(
+        record
+            .attachments
+            .iter()
+            .filter(|asset| asset
+                .mime_type
+                .as_deref()
+                .is_some_and(|mime| { mime.starts_with("audio/") || mime.starts_with("video/") }))
+            .count(),
+        2
+    );
     assert_eq!(record.metadata.get("media_type"), Some(&"pdf".to_owned()));
+    assert_sensitive_warning_mentions_privacy_and_victims(
+        record
+            .metadata
+            .get("source_warning")
+            .expect("mixed-media record should carry sensitive source warning"),
+    );
 
     let requests = requests.join().expect("request capture should finish");
     assert_eq!(requests.len(), 1);
@@ -257,6 +286,12 @@ async fn redirect_is_denied_for_disclosures_search() {
         }
         other => panic!("unexpected error: {other:?}"),
     }
+}
+
+fn assert_sensitive_warning_mentions_privacy_and_victims(warning: &str) {
+    let lower = warning.to_ascii_lowercase();
+    assert!(lower.contains("privacy") || lower.contains("sensitive"));
+    assert!(lower.contains("victim-identification"));
 }
 
 fn serve_sequence(responses: Vec<ResponseSpec>) -> (String, thread::JoinHandle<Vec<String>>) {

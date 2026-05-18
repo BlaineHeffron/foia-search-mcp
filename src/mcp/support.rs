@@ -1,9 +1,11 @@
 use crate::errors::FoiaSearchError;
 use crate::index::SearchHit;
-use crate::model::{IngestionJob, LocalDocument, LocalDocumentText, LocalPageText, LocalSearchHit};
+use crate::model::{
+    source_warning_from_metadata, IngestionJob, LocalDocument, LocalDocumentText, LocalPageText,
+    LocalSearchHit,
+};
 use crate::store::{StoreError, StoredDocumentMetadata, StoredIngestionJob, StoredPageText};
 use rmcp::ErrorData as McpError;
-use serde_json::Value;
 
 pub(crate) const MAX_TEXT_PAGE_RANGE: u32 = 50;
 
@@ -207,18 +209,7 @@ pub(crate) fn local_search_hit_from_index(hit: SearchHit) -> LocalSearchHit {
 }
 
 fn source_warning_from_metadata_str(metadata_json: &str) -> Option<String> {
-    serde_json::from_str::<Value>(metadata_json)
+    serde_json::from_str::<serde_json::Value>(metadata_json)
         .ok()
         .and_then(|metadata| source_warning_from_metadata(&metadata))
-}
-
-fn source_warning_from_metadata(metadata: &Value) -> Option<String> {
-    metadata
-        .get("source_metadata")
-        .and_then(|source_metadata| source_metadata.get("source_warning"))
-        .or_else(|| metadata.get("source_warning"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|warning| !warning.is_empty())
-        .map(str::to_owned)
 }
