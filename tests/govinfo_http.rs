@@ -96,6 +96,45 @@ async fn search_empty_results_returns_warning() {
     assert!(page.records.is_empty());
     assert_eq!(page.warnings.len(), 1);
     assert!(page.warnings[0].contains("returned no records"));
+    assert_eq!(page.next_cursor, None);
+    assert!(request
+        .join()
+        .expect("request thread should finish")
+        .starts_with("POST /search?api_key=test-key HTTP/1.1"));
+}
+
+#[tokio::test]
+async fn search_suppresses_repeat_offset_mark_cursor() {
+    let body = r#"{
+  "count": 1,
+  "offsetMark": "cursor-123",
+  "results": [
+    {
+      "title": "Sample Result",
+      "packageId": "USREPORTS-99",
+      "resultLink": "https://api.govinfo.gov/packages/USREPORTS-99/summary",
+      "download": {
+        "pdfLink": "https://api.govinfo.gov/packages/USREPORTS-99/pdf"
+      }
+    }
+  ]
+}"#;
+    let (base_url, request) = serve_once("HTTP/1.1 200 OK", "application/json", body);
+    let adapter = GovInfoAdapter::new(base_url, Some("test-key".to_owned()));
+
+    let page = adapter
+        .search(
+            "repeat cursor query",
+            SearchOptions {
+                max_results: 1,
+                cursor: Some("cursor-123".to_owned()),
+            },
+        )
+        .await
+        .expect("response should parse");
+
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(page.next_cursor, None);
     assert!(request
         .join()
         .expect("request thread should finish")
@@ -123,6 +162,10 @@ async fn get_record_fetches_package_summary_for_plain_package_id() {
         record.origin_url,
         "https://www.govinfo.gov/app/details/USREPORTS-99"
     );
+    assert_eq!(
+        record.document_url,
+        "https://api.govinfo.gov/packages/USREPORTS-99/summary"
+    );
     assert!(request
         .join()
         .expect("request thread should finish")
@@ -145,6 +188,10 @@ async fn get_record_accepts_details_url_and_fetches_granule_summary() {
     assert_eq!(
         record.pdf_url.as_deref(),
         Some("https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf")
+    );
+    assert_eq!(
+        record.document_url,
+        "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/summary"
     );
     assert!(request
         .join()

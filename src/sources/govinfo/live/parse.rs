@@ -145,10 +145,7 @@ pub(crate) fn record_from_summary(
 
     let details_link = first_string(payload, &["detailsLink"])
         .unwrap_or_else(|| details_link_for(&package_id, granule_id.as_deref()));
-    let package_link = first_string(payload, &["packageLink"]);
-    let document_url = package_link
-        .or_else(|| first_string(payload, &["granulesLink"]))
-        .unwrap_or_else(|| details_link.clone());
+    let document_url = summary_link_for(&package_id, granule_id.as_deref());
     let metadata = metadata_from_fields(
         payload,
         &[
@@ -279,6 +276,20 @@ fn details_link_for(package_id: &str, granule_id: Option<&str>) -> String {
         ),
         None => format!(
             "https://www.govinfo.gov/app/details/{}",
+            percent_encode_path_segment(package_id)
+        ),
+    }
+}
+
+fn summary_link_for(package_id: &str, granule_id: Option<&str>) -> String {
+    match granule_id {
+        Some(granule_id) => format!(
+            "https://api.govinfo.gov/packages/{}/granules/{}/summary",
+            percent_encode_path_segment(package_id),
+            percent_encode_path_segment(granule_id)
+        ),
+        None => format!(
+            "https://api.govinfo.gov/packages/{}/summary",
             percent_encode_path_segment(package_id)
         ),
     }

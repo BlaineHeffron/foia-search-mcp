@@ -176,6 +176,12 @@ impl SourceAdapter for GovInfoAdapter {
     ) -> SourceFuture<'a, SearchPage> {
         Box::pin(async move {
             let query = query.trim();
+            let requested_offset_mark = options
+                .cursor
+                .as_deref()
+                .map(str::trim)
+                .filter(|cursor| !cursor.is_empty())
+                .unwrap_or("*");
             if query.is_empty() {
                 return Err(SourceError::invalid_input(
                     GOVINFO_SOURCE,
@@ -219,6 +225,7 @@ impl SourceAdapter for GovInfoAdapter {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|cursor| !cursor.is_empty())
+                .filter(|cursor| !records.is_empty() && *cursor != requested_offset_mark)
                 .map(ToOwned::to_owned);
 
             Ok(SearchPage {
