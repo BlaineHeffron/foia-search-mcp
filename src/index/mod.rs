@@ -6,6 +6,8 @@ mod reconcile_repair_tests;
 mod reconcile_tests;
 pub mod search;
 pub mod sqlite_fts;
+#[cfg(test)]
+mod sqlite_fts_eval_tests;
 
 pub use reconcile::{
     reconcile_sqlite_fts_index, FtsReconciliationError, FtsReconciliationIssue,
