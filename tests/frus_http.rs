@@ -4,8 +4,12 @@ use std::{
     thread,
 };
 
-use foia_search::sources::{
-    frus::FrusAdapter, SearchOptions, SourceAdapter, SourceAssetRole, SourceError,
+use foia_search::{
+    ingest::plan_source_ingestion,
+    sources::{
+        frus::FrusAdapter, CachePolicy, SearchOptions, SourceAdapter, SourceAssetRole, SourceError,
+    },
+    store::TextSource,
 };
 
 type ResponseSpec = (
@@ -280,6 +284,110 @@ async fn list_assets_prefers_tei_pdf_html_then_epub() {
     assert_eq!(assets[1].role, SourceAssetRole::Pdf);
     assert_eq!(assets[2].role, SourceAssetRole::Html);
     assert_eq!(assets[3].role, SourceAssetRole::Other);
+}
+
+#[tokio::test]
+async fn frus_plan_prefers_pdf_but_preserves_official_urls_notes_and_source_metadata() {
+    let body = include_str!("fixtures/frus/detail_record.html");
+    let (base_url, _requests) = serve_sequence(vec![(
+        "HTTP/1.1 200 OK",
+        vec![("Content-Type", "text/html; charset=utf-8")],
+        body,
+    )]);
+    let adapter = FrusAdapter::new(base_url);
+
+    let record = adapter
+        .get_record("frus1969-76v12/d34")
+        .await
+        .expect("record should parse");
+    let plan = plan_source_ingestion(&record, CachePolicy::RespectSourceHeaders)
+        .expect("FRUS record should produce a PDF-first ingest plan");
+    let metadata: serde_json::Value =
+        serde_json::from_str(&plan.document.metadata_json).expect("plan metadata should be JSON");
+
+    assert_eq!(plan.asset.role, SourceAssetRole::Pdf);
+    assert_eq!(plan.asset.text_source, TextSource::EmbeddedPdfText);
+    assert_eq!(plan.document.text_source, TextSource::EmbeddedPdfText);
+    assert_eq!(
+        plan.document.origin_url.as_deref(),
+        Some(record.origin_url.as_str())
+    );
+    assert_eq!(
+        plan.document.document_url.as_deref(),
+        Some(record.document_url.as_str())
+    );
+    assert_eq!(plan.document.pdf_url.as_deref(), record.pdf_url.as_deref());
+    assert_eq!(
+        plan.document.citation_note.as_deref(),
+        record.citation_note.as_deref()
+    );
+    assert_eq!(
+        plan.document.terms_note.as_deref(),
+        record.terms_note.as_deref()
+    );
+    assert_eq!(
+        metadata["source_metadata"]["source_warning"],
+        "FRUS records should be cited from official history.state.gov document URLs with document-number context when available."
+    );
+    assert_eq!(
+        metadata["source_metadata"]["official_document_url"],
+        "https://history.state.gov/historicaldocuments/frus1969-76v12/d34"
+    );
+    assert_eq!(
+        metadata["source_metadata"]["tei_xml_url"],
+        "https://raw.githubusercontent.com/HistoryAtState/frus/master/volumes/frus1969-76v12.xml"
+    );
+    assert_eq!(
+        metadata["source_metadata"]["pdf_url"],
+        "https://static.history.state.gov/frus/frus1969-76v12/pdf/frus1969-76v12.pdf"
+    );
+    assert_eq!(metadata["ingest_plan"]["selected_asset"]["role"], "pdf");
+    assert_eq!(
+        metadata["ingest_plan"]["selected_asset"]["text_source"],
+        "embedded_pdf_text"
+    );
+}
+
+#[tokio::test]
+async fn frus_plan_uses_tei_text_source_when_pdf_asset_is_unavailable() {
+    let body = include_str!("fixtures/frus/detail_record.html");
+    let (base_url, _requests) = serve_sequence(vec![(
+        "HTTP/1.1 200 OK",
+        vec![("Content-Type", "text/html; charset=utf-8")],
+        body,
+    )]);
+    let adapter = FrusAdapter::new(base_url);
+
+    let mut record = adapter
+        .get_record("frus1969-76v12/d34")
+        .await
+        .expect("record should parse");
+    record.pdf_url = None;
+    record
+        .attachments
+        .retain(|asset| asset.role != SourceAssetRole::Pdf);
+
+    let plan = plan_source_ingestion(&record, CachePolicy::RespectSourceHeaders)
+        .expect("FRUS TEI/XML should remain ingestible when the PDF asset is unavailable");
+    let metadata: serde_json::Value =
+        serde_json::from_str(&plan.document.metadata_json).expect("plan metadata should be JSON");
+
+    assert_eq!(plan.asset.role, SourceAssetRole::Transcript);
+    assert_eq!(plan.asset.text_source, TextSource::Tei);
+    assert_eq!(plan.document.text_source, TextSource::Tei);
+    assert_eq!(plan.document.pdf_url, None);
+    assert_eq!(
+        metadata["ingest_plan"]["selected_asset"]["role"],
+        "transcript"
+    );
+    assert_eq!(
+        metadata["ingest_plan"]["selected_asset"]["text_source"],
+        "tei"
+    );
+    assert_eq!(
+        metadata["ingest_plan"]["selected_asset"]["mime_type"],
+        "application/tei+xml"
+    );
 }
 
 fn serve_sequence(responses: Vec<ResponseSpec>) -> (String, thread::JoinHandle<Vec<String>>) {

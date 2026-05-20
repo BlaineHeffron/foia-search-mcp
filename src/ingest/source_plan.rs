@@ -216,6 +216,13 @@ fn is_plain_text_asset(asset: &SourceAsset) -> bool {
         || url_without_query(&asset.asset_url).ends_with(".txt")
 }
 
+fn is_tei_asset(asset: &SourceAsset) -> bool {
+    asset.mime_type.as_deref().is_some_and(|mime| {
+        let normalized = mime.to_ascii_lowercase();
+        normalized == "application/tei+xml" || normalized == "text/tei+xml"
+    }) || url_without_query(&asset.asset_url).ends_with(".xml")
+}
+
 fn url_without_query(url: &str) -> String {
     url.split(['?', '#'])
         .next()
@@ -228,7 +235,13 @@ fn text_source_for_asset(asset: &SourceAsset) -> TextSource {
         SourceAssetRole::Pdf => TextSource::EmbeddedPdfText,
         SourceAssetRole::OcrText => TextSource::SourceOcr,
         SourceAssetRole::Html => TextSource::Html,
-        SourceAssetRole::Transcript => TextSource::ApiText,
+        SourceAssetRole::Transcript => {
+            if is_tei_asset(asset) {
+                TextSource::Tei
+            } else {
+                TextSource::ApiText
+            }
+        }
         SourceAssetRole::Image | SourceAssetRole::Other => {
             if is_plain_text_asset(asset) {
                 TextSource::ApiText
