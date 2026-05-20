@@ -7,6 +7,8 @@ mod executor_async;
 #[cfg(test)]
 mod executor_cancel_tests;
 #[cfg(test)]
+mod executor_govinfo_tests;
+#[cfg(test)]
 mod executor_send_tests;
 #[cfg(test)]
 mod executor_tests;
