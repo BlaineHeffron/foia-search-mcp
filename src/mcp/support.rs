@@ -1,8 +1,8 @@
 use crate::errors::FoiaSearchError;
 use crate::index::SearchHit;
 use crate::model::{
-    source_warning_from_metadata, IngestionJob, LocalDocument, LocalDocumentText, LocalPageText,
-    LocalSearchHit,
+    local_search_empty_next_action, source_warning_from_metadata, IngestionJob, LocalDocument,
+    LocalDocumentText, LocalPageText, LocalSearchHit, LocalSearchResponse,
 };
 use crate::store::{StoreError, StoredDocumentMetadata, StoredIngestionJob, StoredPageText};
 use rmcp::ErrorData as McpError;
@@ -206,6 +206,22 @@ pub(crate) fn local_search_hit_from_index(hit: SearchHit) -> LocalSearchHit {
         source_warning,
         warnings,
     }
+}
+
+pub(crate) fn local_search_response_from_index(
+    hits: Vec<SearchHit>,
+    source_filter: Option<&str>,
+) -> LocalSearchResponse {
+    let hits = hits
+        .into_iter()
+        .map(local_search_hit_from_index)
+        .collect::<Vec<_>>();
+    let next_actions = if hits.is_empty() {
+        vec![local_search_empty_next_action(source_filter)]
+    } else {
+        Vec::new()
+    };
+    LocalSearchResponse { hits, next_actions }
 }
 
 fn source_warning_from_metadata_str(metadata_json: &str) -> Option<String> {

@@ -122,6 +122,12 @@ pub struct LocalSearchHit {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct LocalSearchResponse {
+    pub hits: Vec<LocalSearchHit>,
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DerivedArtifactRepairIssue {
     pub kind: String,
     pub issue: String,
@@ -266,6 +272,18 @@ pub(crate) fn source_warning_from_metadata(metadata: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|warning| !warning.is_empty())
         .map(str::to_owned)
+}
+
+pub(crate) fn local_search_empty_next_action(source_filter: Option<&str>) -> String {
+    match source_filter {
+        Some(source) => format!(
+            "No local hits for source '{source}'. Ingest additional local documents for that source or broaden query terms."
+        ),
+        None => {
+            "No local hits. Ingest local documents first or broaden query/source constraints."
+                .to_owned()
+        }
+    }
 }
 
 fn source_asset_role_name(role: &crate::sources::SourceAssetRole) -> &'static str {

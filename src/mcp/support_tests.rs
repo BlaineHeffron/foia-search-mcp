@@ -2,7 +2,7 @@ use crate::{
     index::SearchHit,
     mcp::support::{
         local_document_from_stored, local_document_text_from_stored, local_search_hit_from_index,
-        validate_text_page_range, MAX_TEXT_PAGE_RANGE,
+        local_search_response_from_index, validate_text_page_range, MAX_TEXT_PAGE_RANGE,
     },
     store::{DocumentKey, StoredDocumentMetadata, StoredPageText},
 };
@@ -140,6 +140,67 @@ fn local_search_hit_outputs_source_warning_citation_and_terms() {
         hit.terms_note.as_deref(),
         Some("Sensitive DOJ Epstein Library content.")
     );
+}
+
+#[test]
+fn local_search_response_includes_guidance_for_empty_unfiltered_results() {
+    let response = local_search_response_from_index(Vec::new(), None);
+
+    assert!(response.hits.is_empty());
+    assert_eq!(response.next_actions.len(), 1);
+    assert!(response.next_actions[0].contains("No local hits."));
+    assert!(response.next_actions[0].contains("broaden query/source constraints"));
+}
+
+#[test]
+fn local_search_response_includes_source_specific_guidance_for_filter_miss() {
+    let response = local_search_response_from_index(Vec::new(), Some("cia"));
+
+    assert!(response.hits.is_empty());
+    assert_eq!(response.next_actions.len(), 1);
+    assert!(response.next_actions[0].contains("No local hits for source 'cia'"));
+    assert!(response.next_actions[0].contains("broaden query terms"));
+}
+
+#[test]
+fn local_search_response_keeps_non_empty_hit_shape_and_no_next_actions() {
+    let response = local_search_response_from_index(
+        vec![SearchHit {
+            document_key: DocumentKey::new("doc_cia_search_response").expect("safe key"),
+            chunk_id: "chunk-0002".to_owned(),
+            source: "cia".to_owned(),
+            title: "CIA response-shape fixture".to_owned(),
+            page_start: 2,
+            page_end: 3,
+            score: -2.0,
+            snippet: "search response fixture".to_owned(),
+            metadata_json: r#"{"source_metadata":{"source_warning":"CIA search warning"}}"#
+                .to_owned(),
+            citation_note: Some("Cite CIA response fixture.".to_owned()),
+            terms_note: Some("CIA response fixture terms.".to_owned()),
+        }],
+        Some("cia"),
+    );
+
+    assert_eq!(response.hits.len(), 1);
+    assert!(response.next_actions.is_empty());
+    let hit = &response.hits[0];
+    assert_eq!(hit.document_key, "doc_cia_search_response");
+    assert_eq!(hit.chunk_id, "chunk-0002");
+    assert_eq!(hit.source, "cia");
+    assert_eq!(hit.title, "CIA response-shape fixture");
+    assert_eq!((hit.page_start, hit.page_end), (2, 3));
+    assert_eq!(hit.snippet, "search response fixture");
+    assert_eq!(
+        hit.citation_note.as_deref(),
+        Some("Cite CIA response fixture.")
+    );
+    assert_eq!(
+        hit.terms_note.as_deref(),
+        Some("CIA response fixture terms.")
+    );
+    assert_eq!(hit.source_warning.as_deref(), Some("CIA search warning"));
+    assert_eq!(hit.warnings, vec!["CIA search warning".to_owned()]);
 }
 
 fn stored_document_metadata(metadata_json: &str) -> StoredDocumentMetadata {

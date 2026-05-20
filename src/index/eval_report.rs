@@ -1,5 +1,8 @@
 use super::search::{LocalSearchBackend, SearchHit, SearchQuery};
-use crate::{model::source_warning_from_metadata, store::StoreError};
+use crate::{
+    model::{local_search_empty_next_action, source_warning_from_metadata},
+    store::StoreError,
+};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
@@ -122,22 +125,10 @@ fn build_query_report(
         elapsed,
         hit_count: observed_hits.len(),
         is_empty,
-        empty_result_next_action: is_empty.then(|| empty_result_next_action(source_filter)),
+        empty_result_next_action: is_empty.then(|| local_search_empty_next_action(source_filter)),
         source_filter_matches_all_hits,
         result_order,
         hits: observed_hits,
-    }
-}
-
-fn empty_result_next_action(source_filter: Option<&str>) -> String {
-    match source_filter {
-        Some(source) => format!(
-            "No local hits for source '{source}'. Ingest additional local documents for that source or broaden query terms."
-        ),
-        None => {
-            "No local hits. Ingest local documents first or broaden query/source constraints."
-                .to_owned()
-        }
     }
 }
 

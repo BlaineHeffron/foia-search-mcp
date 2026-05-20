@@ -117,6 +117,16 @@ fn list_sources_tool_description_names_object_response_shape() {
     assert!(description.contains("ocr"));
 }
 
+#[test]
+fn search_local_documents_tool_description_names_object_response_shape() {
+    let tools = registered_tools_by_name();
+    let description = description_for(&tools, "search_local_documents");
+
+    assert!(description.contains("top-level object"));
+    assert!(description.contains("hits"));
+    assert!(description.contains("next_actions"));
+}
+
 fn registered_tools_by_name() -> BTreeMap<String, Tool> {
     FoiaSearchServer::tool_router()
         .list_all()

@@ -22,8 +22,8 @@ use crate::{
         support::{
             document_lookup_error_to_mcp, ingestion_job_error_to_mcp, ingestion_job_from_stored,
             local_document_from_stored, local_document_text_from_stored,
-            local_search_hit_from_index, source_error_to_mcp, store_error_to_mcp, validate_source,
-            validate_text_page_range,
+            local_search_response_from_index, source_error_to_mcp, store_error_to_mcp,
+            validate_source, validate_text_page_range,
         },
     },
     model::SearchPage,
@@ -227,7 +227,7 @@ impl FoiaSearchServer {
     }
 
     #[tool(
-        description = "Search locally ingested document metadata, page text, and chunks with traceable document/page results."
+        description = "Search locally ingested document metadata, page text, and chunks with traceable document/page results. Returns a top-level object with hits and next_actions; next_actions provides guidance when no hits are returned."
     )]
     async fn search_local_documents(
         &self,
@@ -237,6 +237,10 @@ impl FoiaSearchServer {
             validate_source(source.as_str())?;
         }
         let store = self.open_store()?;
+        let source_filter = params
+            .source
+            .as_ref()
+            .map(|source| source.as_str().to_owned());
         let source = params.source.map(LocalSourceFilter::into_string);
         let hits = FtsSearch::new(&store)
             .search(&SearchQuery {
@@ -244,11 +248,9 @@ impl FoiaSearchServer {
                 source,
                 limit: i64::from(params.limit.unwrap_or(10).min(100)),
             })
-            .map_err(store_error_to_mcp)?
-            .into_iter()
-            .map(local_search_hit_from_index)
-            .collect::<Vec<_>>();
-        json_result(&hits)
+            .map_err(store_error_to_mcp)?;
+        let response = local_search_response_from_index(hits, source_filter.as_deref());
+        json_result(&response)
     }
 
     #[tool(
@@ -688,4 +690,5 @@ mod tests {
     }
 
     include!("tools/tools_refresh_tests.rs");
+    include!("tools/tools_search_local_tests.rs");
 }

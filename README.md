@@ -17,7 +17,7 @@ The Rust MCP server is the primary implementation. The old TypeScript draft has 
 - `get_source_record`: fetch one normalized source record by source ID or canonical URL. AARO, Army FOIA Reading Room, Navy FOIA Reading Room, CIA, GovInfo, PURSUE, DOJ Epstein, DOE OpenNet, DOJ component FOIA, FBI Vault, FRUS, NOAA, NSA, State Department Virtual Reading Room, DIA FOIA Electronic Reading Room, OSD/Joint Staff FOIA Reading Room, DTIC, and configured NARA are wired.
 - `ingest_document`: create a durable queued ingestion job for a source-prefixed document ID such as `cia:CREST-...`.
 - `get_ingestion_job`: read durable ingestion job status, progress, errors, and next actions.
-- `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index.
+- `search_local_documents`: search locally ingested metadata/page/chunk text through the SQLite FTS index. Returns a top-level object shaped as `{ "hits": [ ... ], "next_actions": [ ... ] }`; `next_actions` is populated when no local hits are found.
 - `get_document`: return normalized metadata and provenance for an ingested local document.
 - `get_document_text`: return extracted/OCR text for an explicit one-based page range of at most 50 pages.
 - `refresh_document`: create a queued refresh job for a local/source-prefixed document.
