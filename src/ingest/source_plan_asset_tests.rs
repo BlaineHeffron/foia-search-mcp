@@ -232,3 +232,76 @@ fn preserves_source_ids_without_promoting_them_to_document_keys() {
         "test-id/with/pathish/source"
     );
 }
+
+#[test]
+fn govinfo_plan_preserves_notes_warning_policy_and_official_urls() {
+    let mut record = mixed_media_record(vec![
+        asset(
+            SourceAssetRole::Pdf,
+            "https://api.govinfo.gov/packages/USREPORTS-99/pdf",
+            Some("application/pdf"),
+        ),
+        asset(
+            SourceAssetRole::Other,
+            "https://api.govinfo.gov/packages/USREPORTS-99/xml",
+            Some("application/xml"),
+        ),
+    ]);
+    record.id = "govinfo:USREPORTS-99".to_owned();
+    record.document_key = "govinfo-93c0f3b4c86f328a".to_owned();
+    record.source = "govinfo";
+    record.source_id = "USREPORTS-99".to_owned();
+    record.origin_url = "https://www.govinfo.gov/app/details/USREPORTS-99".to_owned();
+    record.document_url = "https://api.govinfo.gov/packages/USREPORTS-99/summary".to_owned();
+    record.citation_note = Some("GovInfo citation note".to_owned());
+    record.terms_note = Some("GovInfo terms note".to_owned());
+    record.metadata.insert(
+        "source_warning".to_owned(),
+        "GovInfo warning note".to_owned(),
+    );
+    record.metadata.insert(
+        "cache_policy_note".to_owned(),
+        "Respect source cache headers".to_owned(),
+    );
+    record.metadata.insert(
+        "redirect_policy_note".to_owned(),
+        "Redirects denied by default".to_owned(),
+    );
+
+    let plan = plan_source_ingestion(&record, CachePolicy::RespectSourceHeaders)
+        .expect("GovInfo source record should produce a PDF-first ingest plan");
+    let metadata = ingest_plan_json(&plan);
+
+    assert_eq!(
+        plan.document.origin_url.as_deref(),
+        Some("https://www.govinfo.gov/app/details/USREPORTS-99")
+    );
+    assert_eq!(
+        plan.document.document_url.as_deref(),
+        Some("https://api.govinfo.gov/packages/USREPORTS-99/summary")
+    );
+    assert_eq!(
+        plan.document.citation_note.as_deref(),
+        Some("GovInfo citation note")
+    );
+    assert_eq!(
+        plan.document.terms_note.as_deref(),
+        Some("GovInfo terms note")
+    );
+    assert_eq!(
+        metadata["source_metadata"]["source_warning"],
+        "GovInfo warning note"
+    );
+    assert_eq!(
+        metadata["source_metadata"]["cache_policy_note"],
+        "Respect source cache headers"
+    );
+    assert_eq!(
+        metadata["source_metadata"]["redirect_policy_note"],
+        "Redirects denied by default"
+    );
+    assert_eq!(
+        metadata["ingest_plan"]["cache_policy"],
+        "respect_source_headers"
+    );
+}

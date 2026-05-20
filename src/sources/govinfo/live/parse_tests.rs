@@ -1,4 +1,4 @@
-use super::parse::{parse_locator, record_from_search_result};
+use super::parse::{parse_locator, record_from_search_result, record_from_summary};
 use super::{govinfo_citation_note, govinfo_terms_note, GovInfoLocator};
 
 #[test]
@@ -68,4 +68,75 @@ fn search_record_normalization_prefers_result_link_and_notes() {
         Some(govinfo_citation_note())
     );
     assert_eq!(record.terms_note.as_deref(), Some(govinfo_terms_note()));
+    assert_eq!(
+        record.metadata.get("source_warning").map(String::as_str),
+        Some(
+            "GovInfo metadata can include package-level and granule-level links; verify publication context and cited pages against the official GovInfo details page and selected official asset."
+        )
+    );
+    assert_eq!(
+        record.metadata.get("cache_policy_note").map(String::as_str),
+        Some("GovInfo API responses and downloaded assets respect source-provided cache headers.")
+    );
+    assert_eq!(
+        record
+            .metadata
+            .get("redirect_policy_note")
+            .map(String::as_str),
+        Some(
+            "GovInfo source fetches deny redirects by default unless an adapter-specific policy is explicitly reviewed."
+        )
+    );
+}
+
+#[test]
+fn summary_record_uses_official_urls_and_preserves_policy_metadata() {
+    let summary = serde_json::json!({
+        "title": "United States reports, Supreme Court",
+        "packageId": "USREPORTS-99",
+        "dateIssued": "1879-01-01",
+        "collectionCode": "USREPORTS",
+        "detailsLink": "https://www.govinfo.gov/app/details/USREPORTS-99",
+        "download": {
+            "pdfLink": "https://api.govinfo.gov/packages/USREPORTS-99/pdf",
+            "xmlLink": "https://api.govinfo.gov/packages/USREPORTS-99/xml"
+        }
+    });
+
+    let locator = GovInfoLocator::Package {
+        package_id: "USREPORTS-99".to_owned(),
+    };
+    let record = record_from_summary(&summary, &locator).expect("summary should parse");
+
+    assert_eq!(
+        record.origin_url,
+        "https://www.govinfo.gov/app/details/USREPORTS-99"
+    );
+    assert_eq!(
+        record.document_url,
+        "https://api.govinfo.gov/packages/USREPORTS-99/summary"
+    );
+    assert_eq!(
+        record.pdf_url.as_deref(),
+        Some("https://api.govinfo.gov/packages/USREPORTS-99/pdf")
+    );
+    assert_eq!(
+        record.metadata.get("source_warning").map(String::as_str),
+        Some(
+            "GovInfo metadata can include package-level and granule-level links; verify publication context and cited pages against the official GovInfo details page and selected official asset."
+        )
+    );
+    assert_eq!(
+        record.metadata.get("cache_policy_note").map(String::as_str),
+        Some("GovInfo API responses and downloaded assets respect source-provided cache headers.")
+    );
+    assert_eq!(
+        record
+            .metadata
+            .get("redirect_policy_note")
+            .map(String::as_str),
+        Some(
+            "GovInfo source fetches deny redirects by default unless an adapter-specific policy is explicitly reviewed."
+        )
+    );
 }

@@ -8,6 +8,12 @@ use super::{
     GOVINFO_SOURCE,
 };
 
+const SOURCE_WARNING: &str = "GovInfo metadata can include package-level and granule-level links; verify publication context and cited pages against the official GovInfo details page and selected official asset.";
+const CACHE_POLICY_NOTE: &str =
+    "GovInfo API responses and downloaded assets respect source-provided cache headers.";
+const REDIRECT_POLICY_NOTE: &str =
+    "GovInfo source fetches deny redirects by default unless an adapter-specific policy is explicitly reviewed.";
+
 pub(crate) fn parse_locator(id_or_url: &str) -> Result<GovInfoLocator, SourceError> {
     let mut value = id_or_url.trim();
     if value.is_empty() {
@@ -75,7 +81,7 @@ pub(crate) fn record_from_search_result(result: &Value) -> Option<SourceRecord> 
     let details_link = details_link_for(&package_id, granule_id.as_deref());
     let result_link = first_string(result, &["resultLink"]);
     let document_url = result_link.clone().unwrap_or_else(|| details_link.clone());
-    let metadata = metadata_from_fields(
+    let mut metadata = metadata_from_fields(
         result,
         &[
             "collectionCode",
@@ -86,8 +92,10 @@ pub(crate) fn record_from_search_result(result: &Value) -> Option<SourceRecord> 
             "resultLink",
         ],
     );
+    add_source_policy_metadata(&mut metadata);
 
-    let attachments = attachments_from_download(result.get("download"));
+    let attachments =
+        attachments_from_download(result.get("download"), &package_id, granule_id.as_deref());
     let pdf_url = attachments
         .iter()
         .find(|asset| asset.role == SourceAssetRole::Pdf)
@@ -146,7 +154,7 @@ pub(crate) fn record_from_summary(
     let details_link = first_string(payload, &["detailsLink"])
         .unwrap_or_else(|| details_link_for(&package_id, granule_id.as_deref()));
     let document_url = summary_link_for(&package_id, granule_id.as_deref());
-    let metadata = metadata_from_fields(
+    let mut metadata = metadata_from_fields(
         payload,
         &[
             "collectionCode",
@@ -162,7 +170,9 @@ pub(crate) fn record_from_summary(
             "pages",
         ],
     );
-    let attachments = attachments_from_download(payload.get("download"));
+    add_source_policy_metadata(&mut metadata);
+    let attachments =
+        attachments_from_download(payload.get("download"), &package_id, granule_id.as_deref());
     let pdf_url = attachments
         .iter()
         .find(|asset| asset.role == SourceAssetRole::Pdf)
@@ -305,6 +315,15 @@ fn metadata_from_fields(value: &Value, fields: &[&str]) -> SourceMetadata {
         }
     }
     metadata
+}
+
+fn add_source_policy_metadata(metadata: &mut SourceMetadata) {
+    metadata.insert("source_warning".to_owned(), SOURCE_WARNING.to_owned());
+    metadata.insert("cache_policy_note".to_owned(), CACHE_POLICY_NOTE.to_owned());
+    metadata.insert(
+        "redirect_policy_note".to_owned(),
+        REDIRECT_POLICY_NOTE.to_owned(),
+    );
 }
 
 fn strings_from_array(value: Option<&Value>) -> Option<String> {
