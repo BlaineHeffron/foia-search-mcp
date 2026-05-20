@@ -93,6 +93,90 @@ fn repair_direct_ingestion_and_sensitive_source_guardrails_are_covered() {
     }
 }
 
+#[test]
+fn repair_eval_cases_pin_explicit_report_plan_apply_contracts() {
+    let evals = parse_evals(EVALS_XML);
+
+    let derived_apply = eval_by_id(&evals, "25");
+    for required in [
+        "report_derived_artifact_drift",
+        "plan_derived_artifact_repairs",
+        "apply_derived_artifact_repairs",
+        "do not assume automatic repair",
+        "apply derived artifact repairs for cia:CREST-weather",
+        "manual_review",
+        "orphaned artifacts",
+    ] {
+        assert!(
+            derived_apply.expected.contains(required),
+            "eval 25 expected text should include {required}"
+        );
+    }
+
+    let derived_bad_confirmation = eval_by_id(&evals, "26");
+    for required in [
+        "invalid_params",
+        "exact string",
+        "apply derived artifact repairs for cia:CREST-weather",
+        "manual-review only",
+    ] {
+        assert!(
+            derived_bad_confirmation.expected.contains(required),
+            "eval 26 expected text should include {required}"
+        );
+    }
+
+    let fts_apply = eval_by_id(&evals, "28");
+    for required in [
+        "report_sqlite_fts_drift",
+        "plan_sqlite_fts_repairs",
+        "apply_sqlite_fts_repairs",
+        "do not assume automatic repair",
+        "apply sqlite fts repairs",
+        "manual_review",
+        "orphaned chunk_fts rows",
+    ] {
+        assert!(
+            fts_apply.expected.contains(required),
+            "eval 28 expected text should include {required}"
+        );
+    }
+
+    let fts_bad_confirmation = eval_by_id(&evals, "29");
+    for required in [
+        "invalid_params",
+        "exact string",
+        "apply sqlite fts repairs",
+        "manual-review only",
+    ] {
+        assert!(
+            fts_bad_confirmation.expected.contains(required),
+            "eval 29 expected text should include {required}"
+        );
+    }
+
+    let boundary = eval_by_id(&evals, "repair-startup-worker-boundary");
+    let boundary_text = format!(
+        "{} {}",
+        boundary.question.to_ascii_lowercase(),
+        boundary.expected.to_ascii_lowercase()
+    );
+    for required in [
+        "startup/runtime/worker recovery",
+        "derived artifacts",
+        "sqlite fts drift",
+        "must not auto-repair",
+        "report/plan/apply tools",
+        "exact confirmation string",
+        "manual-review",
+    ] {
+        assert!(
+            boundary_text.contains(required),
+            "repair-startup-worker-boundary question/expected text should include {required}"
+        );
+    }
+}
+
 fn parse_evals(xml: &str) -> Vec<EvalCase> {
     let mut lines = xml.lines().map(str::trim).filter(|line| !line.is_empty());
 
@@ -177,6 +261,13 @@ fn parse_eval_id(line: &str) -> Option<String> {
     let raw_id = line.strip_prefix("<eval id=\"")?.strip_suffix("\">")?;
 
     Some(raw_id.to_owned())
+}
+
+fn eval_by_id<'a>(evals: &'a [EvalCase], id: &str) -> &'a EvalCase {
+    evals
+        .iter()
+        .find(|eval| eval.id == id)
+        .unwrap_or_else(|| panic!("missing eval id {id}"))
 }
 
 fn mentions_source(eval: &EvalCase, source: &str) -> bool {
