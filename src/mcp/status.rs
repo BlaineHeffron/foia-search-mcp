@@ -67,7 +67,24 @@ mod tests {
         let output = list_sources_status(&test_config(), &adapters);
 
         assert_eq!(output.ocr.fallback_policy, "off");
+        assert_eq!(
+            output.ocr.selectable_modes,
+            vec!["off", "on_quality_warning"]
+        );
         assert_eq!(output.ocr.backend, "none");
+        assert_eq!(output.ocr.backend_availability.len(), 3);
+        assert_eq!(output.ocr.backend_availability[0].backend, "none");
+        assert_eq!(output.ocr.backend_availability[0].availability, "disabled");
+        assert_eq!(output.ocr.backend_availability[1].backend, "ocrmypdf");
+        assert_eq!(
+            output.ocr.backend_availability[1].availability,
+            "supported_requires_binary"
+        );
+        assert_eq!(output.ocr.backend_availability[2].backend, "tesseract");
+        assert_eq!(
+            output.ocr.backend_availability[2].availability,
+            "reserved_unavailable"
+        );
         assert!(!output.ocr.enabled);
         assert!(output.ocr.note.contains("disabled"));
         assert!(!output.sources.is_empty());
@@ -83,6 +100,10 @@ mod tests {
         let output = list_sources_status(&config, &adapters);
 
         assert_eq!(output.ocr.fallback_policy, "on_quality_warning");
+        assert_eq!(
+            output.ocr.selectable_modes,
+            vec!["off", "on_quality_warning"]
+        );
         assert_eq!(output.ocr.backend, "ocrmypdf");
         assert!(output.ocr.enabled);
         assert!(output.ocr.note.contains("ocrmypdf"));
@@ -105,7 +126,15 @@ mod tests {
             object
                 .get("ocr")
                 .and_then(serde_json::Value::as_object)
-                .is_some(),
+                .is_some_and(|ocr| {
+                    ocr.contains_key("fallback_policy")
+                        && ocr.contains_key("selectable_modes")
+                        && ocr.contains_key("backend")
+                        && ocr.contains_key("backend_availability")
+                        && ocr.contains_key("backend_binary")
+                        && ocr.contains_key("enabled")
+                        && ocr.contains_key("note")
+                }),
             "list_sources.ocr should be an object"
         );
         assert!(

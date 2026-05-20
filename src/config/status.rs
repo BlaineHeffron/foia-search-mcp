@@ -13,9 +13,17 @@ pub struct SourceStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct OcrBackendAvailability {
+    pub backend: String,
+    pub availability: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct OcrStatus {
     pub fallback_policy: String,
+    pub selectable_modes: Vec<String>,
     pub backend: String,
+    pub backend_availability: Vec<OcrBackendAvailability>,
     pub backend_binary: Option<String>,
     pub enabled: bool,
     pub note: String,
@@ -50,11 +58,26 @@ impl Config {
         } else {
             "off"
         };
+        let selectable_modes = vec!["off".to_owned(), "on_quality_warning".to_owned()];
         let backend = match self.ocr_backend.backend {
             OcrBackend::None => "none",
             OcrBackend::Ocrmypdf => "ocrmypdf",
             OcrBackend::Tesseract => "tesseract",
         };
+        let backend_availability = vec![
+            OcrBackendAvailability {
+                backend: "none".to_owned(),
+                availability: "disabled".to_owned(),
+            },
+            OcrBackendAvailability {
+                backend: "ocrmypdf".to_owned(),
+                availability: "supported_requires_binary".to_owned(),
+            },
+            OcrBackendAvailability {
+                backend: "tesseract".to_owned(),
+                availability: "reserved_unavailable".to_owned(),
+            },
+        ];
         let backend_binary = (self.ocr_backend.backend == OcrBackend::Ocrmypdf)
             .then(|| self.ocr_backend.ocrmypdf_binary.display().to_string());
         let enabled =
@@ -71,7 +94,9 @@ impl Config {
 
         OcrStatus {
             fallback_policy: fallback_policy.to_owned(),
+            selectable_modes,
             backend: backend.to_owned(),
+            backend_availability,
             backend_binary,
             enabled,
             note: note.to_owned(),
@@ -177,7 +202,21 @@ mod tests {
         let status = config.ocr_status();
 
         assert_eq!(status.fallback_policy, "off");
+        assert_eq!(status.selectable_modes, vec!["off", "on_quality_warning"]);
         assert_eq!(status.backend, "none");
+        assert_eq!(status.backend_availability.len(), 3);
+        assert_eq!(status.backend_availability[0].backend, "none");
+        assert_eq!(status.backend_availability[0].availability, "disabled");
+        assert_eq!(status.backend_availability[1].backend, "ocrmypdf");
+        assert_eq!(
+            status.backend_availability[1].availability,
+            "supported_requires_binary"
+        );
+        assert_eq!(status.backend_availability[2].backend, "tesseract");
+        assert_eq!(
+            status.backend_availability[2].availability,
+            "reserved_unavailable"
+        );
         assert_eq!(status.backend_binary, None);
         assert!(!status.enabled);
         assert!(status
@@ -199,6 +238,7 @@ mod tests {
         let status = config.ocr_status();
 
         assert_eq!(status.fallback_policy, "on_quality_warning");
+        assert_eq!(status.selectable_modes, vec!["off", "on_quality_warning"]);
         assert_eq!(status.backend, "ocrmypdf");
         assert_eq!(
             status.backend_binary.as_deref(),
@@ -217,6 +257,7 @@ mod tests {
         let status = config.ocr_status();
 
         assert_eq!(status.fallback_policy, "on_quality_warning");
+        assert_eq!(status.selectable_modes, vec!["off", "on_quality_warning"]);
         assert_eq!(status.backend, "tesseract");
         assert_eq!(status.backend_binary, None);
         assert!(!status.enabled);
@@ -232,6 +273,7 @@ mod tests {
         let status = config.ocr_status();
 
         assert_eq!(status.fallback_policy, "off");
+        assert_eq!(status.selectable_modes, vec!["off", "on_quality_warning"]);
         assert_eq!(status.backend, "tesseract");
         assert!(!status.enabled);
         assert!(status.note.contains("recognized but unavailable"));
