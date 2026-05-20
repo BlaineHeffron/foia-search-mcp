@@ -414,6 +414,14 @@ Additional checkpoint after the Navy FOIA Reading Room family adapter slice:
 - Navy keeps default source policy contracts:
   `cache_policy=RespectSourceHeaders` and `redirect_policy=Deny`.
 
+Additional checkpoint after the Phase 9 indexing evaluation plan:
+
+- Added `docs/phase9-indexing-evaluation.md` and `docs/next-dev-topics.md` to
+  capture the decision rule for evaluating Tantivy before adding another local
+  search backend. SQLite remains canonical, LanceDB remains deferred until a
+  defined embedding model and measurable eval gain exist, and future index
+  repair surfaces must stay explicit and operator-confirmed.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:

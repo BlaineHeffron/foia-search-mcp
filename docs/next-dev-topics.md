@@ -1,7 +1,7 @@
 # Next Development Topics
 
-Status as of `f63b535 feat(mcp): surface source warnings and assets`:
-the worktree was clean and `main` was pushed.
+Status as of `5ae2d0b docs(index): add phase 9 evaluation plan`: the
+worktree was clean and `main` was pushed.
 
 ## Pick Up Here
 
