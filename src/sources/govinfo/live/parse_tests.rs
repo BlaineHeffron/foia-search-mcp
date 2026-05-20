@@ -61,7 +61,7 @@ fn search_record_normalization_prefers_result_link_and_notes() {
         .contains("/granules/WCPD-2009-01-19-Pg36/summary"));
     assert_eq!(
         record.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf")
+        Some("https://www.govinfo.gov/content/pkg/WCPD-2009-01-19/pdf/WCPD-2009-01-19-Pg36.pdf")
     );
     assert_eq!(
         record.citation_note.as_deref(),
@@ -118,7 +118,7 @@ fn summary_record_uses_official_urls_and_preserves_policy_metadata() {
     );
     assert_eq!(
         record.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/USREPORTS-99/pdf")
+        Some("https://www.govinfo.gov/content/pkg/USREPORTS-99/pdf/USREPORTS-99.pdf")
     );
     assert_eq!(
         record.metadata.get("source_warning").map(String::as_str),

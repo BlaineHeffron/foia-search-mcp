@@ -238,7 +238,7 @@ fn govinfo_plan_preserves_notes_warning_policy_and_official_urls() {
     let mut record = mixed_media_record(vec![
         asset(
             SourceAssetRole::Pdf,
-            "https://api.govinfo.gov/packages/USREPORTS-99/pdf",
+            "https://www.govinfo.gov/content/pkg/USREPORTS-99/pdf/USREPORTS-99.pdf",
             Some("application/pdf"),
         ),
         asset(

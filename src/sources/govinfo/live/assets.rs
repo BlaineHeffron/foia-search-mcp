@@ -34,9 +34,10 @@ pub(crate) fn attachments_from_download(
             if url.is_empty() || !is_official_download_url(key, url, package_id, granule_id) {
                 continue;
             }
-            if seen.insert(url.to_owned()) {
+            let asset_url = asset_url_for_download(key, url, package_id, granule_id);
+            if seen.insert(asset_url.clone()) {
                 assets.push(SourceAsset {
-                    asset_url: url.to_owned(),
+                    asset_url,
                     label: key.trim_end_matches("Link").to_uppercase(),
                     mime_type: mime_type_for_download_key(key),
                     role: role_for_download_key(key),
@@ -55,14 +56,15 @@ pub(crate) fn attachments_from_download(
             continue;
         };
         let url = url.trim();
-        if url.is_empty()
-            || !is_official_download_url(&key, url, package_id, granule_id)
-            || !seen.insert(url.to_owned())
-        {
+        if url.is_empty() || !is_official_download_url(&key, url, package_id, granule_id) {
+            continue;
+        }
+        let asset_url = asset_url_for_download(&key, url, package_id, granule_id);
+        if !seen.insert(asset_url.clone()) {
             continue;
         }
         assets.push(SourceAsset {
-            asset_url: url.to_owned(),
+            asset_url,
             label: key.trim_end_matches("Link").to_uppercase(),
             mime_type: None,
             role: SourceAssetRole::Other,
@@ -130,6 +132,27 @@ fn allows_package_level_for_granule(download_key: &str) -> bool {
     matches!(download_key, "zipLink" | "premisLink")
 }
 
+fn asset_url_for_download(
+    download_key: &str,
+    url: &str,
+    package_id: &str,
+    granule_id: Option<&str>,
+) -> String {
+    if download_key == "pdfLink" {
+        return public_govinfo_pdf_url(package_id, granule_id);
+    }
+
+    url.to_owned()
+}
+
+fn public_govinfo_pdf_url(package_id: &str, granule_id: Option<&str>) -> String {
+    let package_id = percent_encode_path_segment(package_id);
+    let pdf_name = granule_id
+        .map(percent_encode_path_segment)
+        .unwrap_or_else(|| package_id.clone());
+    format!("https://www.govinfo.gov/content/pkg/{package_id}/pdf/{pdf_name}.pdf")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,7 +177,7 @@ mod tests {
         assert_eq!(
             urls,
             vec![
-                "https://api.govinfo.gov/packages/USREPORTS-99/pdf",
+                "https://www.govinfo.gov/content/pkg/USREPORTS-99/pdf/USREPORTS-99.pdf",
                 "https://api.govinfo.gov/packages/USREPORTS-99/xml",
                 "https://api.govinfo.gov/packages/USREPORTS-99/mods",
                 "https://api.govinfo.gov/packages/USREPORTS-99/txt"
@@ -191,7 +214,7 @@ mod tests {
         assert_eq!(
             urls,
             vec![
-                "https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf",
+                "https://www.govinfo.gov/content/pkg/WCPD-2009-01-19/pdf/WCPD-2009-01-19-Pg36.pdf",
                 "https://api.govinfo.gov/packages/WCPD-2009-01-19/zip"
             ]
         );

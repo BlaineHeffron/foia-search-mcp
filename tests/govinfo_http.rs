@@ -55,7 +55,7 @@ async fn search_posts_json_and_normalizes_package_and_granule_results() {
     assert_eq!(package.source_id, "USREPORTS-99");
     assert_eq!(
         package.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/USREPORTS-99/pdf")
+        Some("https://www.govinfo.gov/content/pkg/USREPORTS-99/pdf/USREPORTS-99.pdf")
     );
     assert_eq!(
         package.document_url,
@@ -67,7 +67,7 @@ async fn search_posts_json_and_normalizes_package_and_granule_results() {
     assert_eq!(granule.source_id, "WCPD-2009-01-19/WCPD-2009-01-19-Pg36");
     assert_eq!(
         granule.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf")
+        Some("https://www.govinfo.gov/content/pkg/WCPD-2009-01-19/pdf/WCPD-2009-01-19-Pg36.pdf")
     );
     assert_eq!(
         granule.terms_note.as_deref().unwrap_or_default(),
@@ -156,7 +156,7 @@ async fn get_record_fetches_package_summary_for_plain_package_id() {
     assert_eq!(record.source_id, "USREPORTS-99");
     assert_eq!(
         record.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/USREPORTS-99/pdf")
+        Some("https://www.govinfo.gov/content/pkg/USREPORTS-99/pdf/USREPORTS-99.pdf")
     );
     assert_eq!(
         record.origin_url,
@@ -187,7 +187,7 @@ async fn get_record_accepts_details_url_and_fetches_granule_summary() {
     assert_eq!(record.source_id, "WCPD-2009-01-19/WCPD-2009-01-19-Pg36");
     assert_eq!(
         record.pdf_url.as_deref(),
-        Some("https://api.govinfo.gov/packages/WCPD-2009-01-19/granules/WCPD-2009-01-19-Pg36/pdf")
+        Some("https://www.govinfo.gov/content/pkg/WCPD-2009-01-19/pdf/WCPD-2009-01-19-Pg36.pdf")
     );
     assert_eq!(
         record.document_url,
