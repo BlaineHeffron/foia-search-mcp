@@ -1,4 +1,11 @@
-use super::ingestion::{enqueue_ingestion_job, enqueue_refresh_job, parse_document_locator};
+use super::{
+    direct_ingestion_policy::TrustedDirectIngestionPolicy,
+    ingestion::{
+        enqueue_ingestion_job, enqueue_ingestion_job_with_policy, enqueue_refresh_job,
+        enqueue_refresh_job_with_policy, parse_document_locator,
+        parse_document_locator_with_policy,
+    },
+};
 use crate::store::{DocumentKey, SqliteStore, StoreError, UpsertDocument};
 
 #[test]
@@ -30,6 +37,38 @@ fn source_prefixed_document_id_can_contain_adapter_path_syntax() {
         locator.source_id,
         "FOIALIBRARY/SearchResults.aspx?caseNumber=F-1990-04213"
     );
+}
+
+#[test]
+fn trusted_source_prefixed_https_url_is_allowed_only_with_explicit_policy() {
+    let policy = trusted_policy_fixture();
+    let document_id = "cia:https://www.cia.gov/readingroom/document/cia-rdp68r00530a000200110020-2";
+
+    let locator = parse_document_locator_with_policy(document_id, &policy)
+        .expect("trusted direct URL should parse with explicit policy");
+    assert_eq!(locator.source, "cia");
+    assert_eq!(
+        locator.source_id,
+        "https://www.cia.gov/readingroom/document/cia-rdp68r00530a000200110020-2"
+    );
+
+    let mut store = SqliteStore::open_memory().expect("open test store");
+    let job = enqueue_ingestion_job_with_policy(
+        &mut store,
+        "ingest",
+        "ingestion",
+        document_id,
+        false,
+        &policy,
+    )
+    .expect("trusted direct URL should enqueue with explicit policy");
+
+    assert_eq!(job.source, "cia");
+    assert_eq!(
+        job.source_id.as_deref(),
+        Some("https://www.cia.gov/readingroom/document/cia-rdp68r00530a000200110020-2")
+    );
+    assert_eq!(job.target_url, None);
 }
 
 #[test]
@@ -76,6 +115,22 @@ fn source_prefixed_direct_or_path_like_inputs_are_rejected() {
 }
 
 #[test]
+fn source_prefixed_direct_urls_require_exact_trusted_path_prefix() {
+    let policy = trusted_policy_fixture();
+
+    for document_id in [
+        "cia:https://www.cia.gov/readingroom/documentary/cia-rdp-test",
+        "cia:https://www.cia.gov/readingroom/collection/cia-rdp-test",
+        "cia:http://www.cia.gov/readingroom/document/cia-rdp-test",
+        "cia:https://evil.example/readingroom/document/cia-rdp-test",
+    ] {
+        let error = parse_document_locator_with_policy(document_id, &policy)
+            .expect_err("untrusted direct URL should be rejected");
+        assert_direct_ingestion_error(document_id, &error.message);
+    }
+}
+
+#[test]
 fn direct_url_and_local_file_rejections_do_not_create_jobs() {
     for document_id in [
         "https://example.test/doc.pdf",
@@ -97,6 +152,30 @@ fn direct_url_and_local_file_rejections_do_not_create_jobs() {
 }
 
 #[test]
+fn source_prefixed_untrusted_urls_do_not_create_jobs_even_with_policy_fixture() {
+    let policy = trusted_policy_fixture();
+    for document_id in [
+        "cia:https://www.cia.gov/readingroom/documentary/cia-rdp-test",
+        "cia:https://evil.example/readingroom/document/cia-rdp-test",
+        "cia:http://www.cia.gov/readingroom/document/cia-rdp-test",
+    ] {
+        let mut store = SqliteStore::open_memory().expect("open test store");
+        let error = enqueue_ingestion_job_with_policy(
+            &mut store,
+            "ingest",
+            "ingestion",
+            document_id,
+            false,
+            &policy,
+        )
+        .expect_err("untrusted direct URL should be rejected before enqueue");
+
+        assert_direct_ingestion_error(document_id, &error.message);
+        assert_missing_job(&store, &format!("ingest:{document_id}"));
+    }
+}
+
+#[test]
 fn refresh_uses_same_direct_ingestion_rejection_before_enqueue() {
     for document_id in [
         "/tmp/doc.pdf",
@@ -111,6 +190,19 @@ fn refresh_uses_same_direct_ingestion_rejection_before_enqueue() {
         assert_direct_ingestion_error(document_id, &error.message);
         assert_missing_job(&store, &format!("refresh:{document_id}"));
     }
+}
+
+#[test]
+fn refresh_remains_direct_deny_even_with_trusted_policy_fixture() {
+    let policy = trusted_policy_fixture();
+    let mut store = SqliteStore::open_memory().expect("open test store");
+    let document_id = "cia:https://www.cia.gov/readingroom/document/cia-rdp68r00530a000200110020-2";
+
+    let error = enqueue_refresh_job_with_policy(&mut store, document_id, true, &policy)
+        .expect_err("refresh should reject direct URL locator before local lookup");
+
+    assert_direct_ingestion_error(document_id, &error.message);
+    assert_missing_job(&store, &format!("refresh:{document_id}"));
 }
 
 #[test]
@@ -221,6 +313,13 @@ fn assert_missing_job(store: &SqliteStore, job_key: &str) {
         .get_ingestion_job_by_key(job_key)
         .expect_err("rejected direct ingestion must not create a job");
     assert!(matches!(error, StoreError::MissingIngestionJob(key) if key == job_key));
+}
+
+fn trusted_policy_fixture() -> TrustedDirectIngestionPolicy {
+    let fixture =
+        include_str!("../../tests/fixtures/ingest/trusted_direct_ingestion_allowlist.txt");
+    TrustedDirectIngestionPolicy::from_fixture_text(fixture)
+        .expect("trusted direct-ingestion fixture should parse")
 }
 
 fn seed_refresh_document(store: &SqliteStore) -> DocumentKey {

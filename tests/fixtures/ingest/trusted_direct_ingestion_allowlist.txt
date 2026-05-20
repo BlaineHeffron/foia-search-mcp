@@ -1,0 +1,4 @@
+# source trusted_url_prefix
+# Fixture-only example: default runtime policy remains deny-all.
+cia https://www.cia.gov/readingroom/document/
+nara https://catalog.archives.gov/id/

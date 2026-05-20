@@ -1,3 +1,4 @@
+pub(crate) mod direct_ingestion_policy;
 pub(crate) mod fts_repair;
 pub(crate) mod ingestion;
 pub mod output;
