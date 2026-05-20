@@ -131,6 +131,12 @@ fn eval_report_records_query_order_empty_state_and_shape_parity() {
     let empty_stormfury = &report.query_reports[1];
     assert_eq!(empty_stormfury.query_name, "empty-stormfury");
     assert!(empty_stormfury.is_empty);
+    assert_eq!(
+        empty_stormfury.empty_result_next_action.as_deref(),
+        Some(
+            "No local hits for source 'cia'. Ingest additional local documents for that source or broaden query terms."
+        )
+    );
     assert_eq!(empty_stormfury.hit_count, 0);
     assert!(empty_stormfury.source_filter_matches_all_hits);
     assert!(empty_stormfury.hits.is_empty());
@@ -185,6 +191,7 @@ fn eval_report_flags_source_filter_mismatches_without_hiding_results() {
     let mismatch = &report.query_reports[0];
     assert_eq!(mismatch.hit_count, 1);
     assert!(!mismatch.is_empty);
+    assert!(mismatch.empty_result_next_action.is_none());
     assert!(!mismatch.source_filter_matches_all_hits);
     assert_eq!(mismatch.hits[0].source, "nsa");
 }
@@ -294,6 +301,7 @@ fn eval_report_integrates_with_sqlite_fts_backend() {
 
     let query_report = &report.query_reports[0];
     assert_eq!(query_report.hit_count, 1);
+    assert!(query_report.empty_result_next_action.is_none());
     assert!(query_report.source_filter_matches_all_hits);
     assert_eq!(
         query_report.result_order[0].document_key,

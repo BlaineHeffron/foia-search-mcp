@@ -11,6 +11,8 @@ pub mod search;
 pub mod sqlite_fts;
 #[cfg(test)]
 mod sqlite_fts_eval_tests;
+#[cfg(test)]
+mod sqlite_sufficiency_eval_tests;
 
 pub use eval_report::{
     run_local_search_eval, LocalSearchEvalReport, LocalSearchQueryReport, NamedSearchQuery,

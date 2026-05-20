@@ -29,6 +29,7 @@ pub struct LocalSearchQueryReport {
     pub elapsed: Duration,
     pub hit_count: usize,
     pub is_empty: bool,
+    pub empty_result_next_action: Option<String>,
     pub source_filter_matches_all_hits: bool,
     pub result_order: Vec<ObservedHitId>,
     pub hits: Vec<ObservedSearchHit>,
@@ -113,16 +114,30 @@ fn build_query_report(
         .iter()
         .map(|hit| hit.id.clone())
         .collect::<Vec<_>>();
+    let is_empty = observed_hits.is_empty();
 
     LocalSearchQueryReport {
         query_name: named_query.name.clone(),
         query: named_query.query.clone(),
         elapsed,
         hit_count: observed_hits.len(),
-        is_empty: observed_hits.is_empty(),
+        is_empty,
+        empty_result_next_action: is_empty.then(|| empty_result_next_action(source_filter)),
         source_filter_matches_all_hits,
         result_order,
         hits: observed_hits,
+    }
+}
+
+fn empty_result_next_action(source_filter: Option<&str>) -> String {
+    match source_filter {
+        Some(source) => format!(
+            "No local hits for source '{source}'. Ingest additional local documents for that source or broaden query terms."
+        ),
+        None => {
+            "No local hits. Ingest local documents first or broaden query/source constraints."
+                .to_owned()
+        }
     }
 }
 

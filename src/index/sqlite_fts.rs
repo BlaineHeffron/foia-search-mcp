@@ -49,7 +49,7 @@ impl SqliteFtsBackend<'_> {
             FROM chunk_fts f
             JOIN documents d ON d.document_key = f.document_key
             WHERE chunk_fts MATCH ?1
-            ORDER BY score
+            ORDER BY score, f.document_key, f.chunk_id
             LIMIT ?2
             ",
         )?;
@@ -72,7 +72,7 @@ impl SqliteFtsBackend<'_> {
             FROM chunk_fts f
             JOIN documents d ON d.document_key = f.document_key
             WHERE chunk_fts MATCH ?1 AND f.source = ?2
-            ORDER BY score
+            ORDER BY score, f.document_key, f.chunk_id
             LIMIT ?3
             ",
         )?;
