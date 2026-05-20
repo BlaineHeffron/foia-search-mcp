@@ -1,45 +1,38 @@
+use super::search::{LocalSearchBackend, LocalSearchIndex, SearchHit, SearchQuery};
 use crate::store::{DocumentKey, SqliteStore, StoreError};
 use rusqlite::params;
 
-#[derive(Clone, Debug)]
-pub struct SearchQuery {
-    pub query: String,
-    pub source: Option<String>,
-    pub limit: i64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct SearchHit {
-    pub document_key: DocumentKey,
-    pub chunk_id: String,
-    pub source: String,
-    pub title: String,
-    pub page_start: i64,
-    pub page_end: i64,
-    pub score: f64,
-    pub snippet: String,
-    pub metadata_json: String,
-    pub citation_note: Option<String>,
-    pub terms_note: Option<String>,
-}
-
 pub struct FtsSearch<'a> {
+    index: LocalSearchIndex<SqliteFtsBackend<'a>>,
+}
+
+struct SqliteFtsBackend<'a> {
     store: &'a SqliteStore,
 }
 
 impl<'a> FtsSearch<'a> {
     pub fn new(store: &'a SqliteStore) -> Self {
-        Self { store }
+        Self {
+            index: LocalSearchIndex::new(SqliteFtsBackend { store }),
+        }
     }
 
     pub fn search(&self, query: &SearchQuery) -> Result<Vec<SearchHit>, StoreError> {
+        self.index.search(query)
+    }
+}
+
+impl LocalSearchBackend for SqliteFtsBackend<'_> {
+    fn search(&self, query: &SearchQuery) -> Result<Vec<SearchHit>, StoreError> {
         let limit = query.limit.clamp(1, 100);
         match &query.source {
             Some(source) => self.search_with_source(&query.query, source, limit),
             None => self.search_all_sources(&query.query, limit),
         }
     }
+}
 
+impl SqliteFtsBackend<'_> {
     fn search_all_sources(&self, query: &str, limit: i64) -> Result<Vec<SearchHit>, StoreError> {
         let mut stmt = self.store.connection().prepare(
             "
@@ -241,5 +234,84 @@ mod tests {
             hits[0].terms_note.as_deref(),
             Some("Sensitive DOJ Epstein Library content.")
         );
+    }
+
+    #[test]
+    fn search_preserves_source_filter_parity_through_backend_seam() {
+        let mut store = SqliteStore::open_memory().expect("open in-memory store");
+        let cia_key = DocumentKey::new("doc_cia_001").expect("safe key");
+        let nsa_key = DocumentKey::new("doc_nsa_001").expect("safe key");
+
+        for (key, public_id, source, title) in [
+            (&cia_key, "cia:CREST-001", "cia", "CIA weather report"),
+            (&nsa_key, "nsa:doc-001", "nsa", "NSA weather memo"),
+        ] {
+            store
+                .upsert_document(&UpsertDocument {
+                    public_id: public_id.to_owned(),
+                    document_key: key.clone(),
+                    source: source.to_owned(),
+                    source_id: public_id.split(':').nth(1).expect("source id").to_owned(),
+                    title: title.to_owned(),
+                    date: None,
+                    collection: None,
+                    record_group: None,
+                    description: None,
+                    origin_url: None,
+                    document_url: None,
+                    pdf_url: None,
+                    metadata_json: "{}".to_owned(),
+                    citation_note: Some(format!("Cite {source}.")),
+                    terms_note: Some(format!("{source} terms.")),
+                })
+                .expect("insert document");
+            store
+                .replace_pages_and_chunks(
+                    key,
+                    &[PageInput {
+                        document_key: key.clone(),
+                        page_number: 1,
+                        text: "weather modification briefing".to_owned(),
+                        text_source: TextSource::EmbeddedPdfText,
+                        quality_score: Some(0.9),
+                        warnings_json: "[]".to_owned(),
+                    }],
+                    &[ChunkInput {
+                        document_key: key.clone(),
+                        chunk_id: "chunk-1".to_owned(),
+                        page_start: 1,
+                        page_end: 1,
+                        text: "weather modification briefing".to_owned(),
+                        token_estimate: Some(3),
+                        metadata_json: "{}".to_owned(),
+                    }],
+                )
+                .expect("replace pages and chunks");
+        }
+
+        let all_hits = FtsSearch::new(&store)
+            .search(&SearchQuery {
+                query: "weather".to_owned(),
+                source: None,
+                limit: 10,
+            })
+            .expect("search all sources");
+        let cia_hits = FtsSearch::new(&store)
+            .search(&SearchQuery {
+                query: "weather".to_owned(),
+                source: Some("cia".to_owned()),
+                limit: 10,
+            })
+            .expect("search filtered source");
+
+        assert_eq!(all_hits.len(), 2);
+        assert_eq!(cia_hits.len(), 1);
+        assert_eq!(cia_hits[0].document_key, cia_key);
+        assert_eq!(cia_hits[0].source, "cia");
+        assert_eq!(cia_hits[0].chunk_id, "chunk-1");
+        assert_eq!(cia_hits[0].page_start, 1);
+        assert_eq!(cia_hits[0].page_end, 1);
+        assert_eq!(cia_hits[0].citation_note.as_deref(), Some("Cite cia."));
+        assert_eq!(cia_hits[0].terms_note.as_deref(), Some("cia terms."));
     }
 }
