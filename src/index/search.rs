@@ -1,6 +1,6 @@
 use crate::store::StoreError;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchQuery {
     pub query: String,
     pub source: Option<String>,

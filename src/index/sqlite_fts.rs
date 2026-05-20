@@ -22,6 +22,12 @@ impl<'a> FtsSearch<'a> {
     }
 }
 
+impl LocalSearchBackend for FtsSearch<'_> {
+    fn search(&self, query: &SearchQuery) -> Result<Vec<SearchHit>, StoreError> {
+        self.index.search(query)
+    }
+}
+
 impl LocalSearchBackend for SqliteFtsBackend<'_> {
     fn search(&self, query: &SearchQuery) -> Result<Vec<SearchHit>, StoreError> {
         let limit = query.limit.clamp(1, 100);
