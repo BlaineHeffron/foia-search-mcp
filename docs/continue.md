@@ -422,6 +422,21 @@ Additional checkpoint after the Phase 9 indexing evaluation plan:
   defined embedding model and measurable eval gain exist, and future index
   repair surfaces must stay explicit and operator-confirmed.
 
+Additional checkpoint after the FRUS/GovInfo live-smoke follow-up:
+
+- Added FRUS ingestion-readiness coverage that preserves citation notes, terms
+  notes, source warnings, official origin/document URLs, TEI/XML/PDF metadata,
+  and page text through source planning and executor loopback behavior.
+- Fixed FRUS TEI/XML transcript planning so PDF-unavailable fallback assets use
+  `TextSource::Tei` instead of being collapsed into `api_text`.
+- Ran an all-source live-smoke/fix pass. The concrete code fix from that pass
+  was GovInfo asset selection: package/granule PDFs now use public GovInfo PDF
+  URLs instead of API asset URLs that can return `403` during ingestion.
+- Several public reading-room sources can return `403` to scripted clients. Do
+  not treat every `403` as a code bug or try to bypass bot protection; prefer
+  stable official APIs when available and structured manual/tracer guidance when
+  they are not.
+
 ## Validation Commands
 
 Run these before handing off or building the next slice:
