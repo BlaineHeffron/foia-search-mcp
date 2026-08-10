@@ -442,18 +442,32 @@ impl FoiaSearchServer {
 
 #[tool_handler]
 impl ServerHandler for FoiaSearchServer {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let stateless = context
+            .protocol_version()
+            .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28);
+        Ok(ListToolsResult {
+            result_type: Some(ResultType::COMPLETE),
+            tools: self.tool_router.list_all(),
+            meta: None,
+            next_cursor: None,
+            ttl_ms: stateless.then_some(300_000),
+            cache_scope: stateless.then_some(CacheScope::Public),
+        })
+    }
+
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_instructions(
                 "Search, ingest, and retrieve FOIA/declassified documents. The Rust server \
                  exposes source search, durable ingestion jobs, local document search, and \
-                 document text retrieval backed by SQLite storage and source provenance."
-                    .into(),
-            ),
-        }
+                 document text retrieval backed by SQLite storage and source provenance.",
+            )
     }
 }
 

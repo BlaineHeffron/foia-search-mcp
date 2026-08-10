@@ -1,5 +1,4 @@
 use crate::store::{ChunkInput, PageInput, TextSource};
-use rmcp::model::RawContent;
 use serde_json::{json, Value};
 
 #[tokio::test]
@@ -125,10 +124,8 @@ async fn search_local_response_json(
     let payload = response
         .content
         .first()
-        .and_then(|content| match &content.raw {
-            RawContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
+        .and_then(|content| content.as_text())
+        .map(|text| text.text.as_str())
         .ok_or("search_local_documents should return text content")?;
     let parsed = serde_json::from_str(payload)?;
     Ok(parsed)

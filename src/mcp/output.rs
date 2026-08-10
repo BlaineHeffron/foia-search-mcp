@@ -10,5 +10,5 @@ where
     let json = serde_json::to_string_pretty(value)
         .map_err(FoiaSearchError::from)
         .map_err(FoiaSearchError::into_mcp_error)?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }

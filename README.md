@@ -2,6 +2,11 @@
 
 MCP server for declassified and FOIA document research.
 
+The Rust server uses RMCP 3 and supports MCP `2026-07-28`'s stateless
+discovery/request lifecycle while retaining legacy initialize compatibility. Its
+deterministic tool catalog advertises a five-minute public cache lifetime to modern
+clients.
+
 ## Design Direction
 
 This repository is a Rust MCP server focused on PDF ingestion, local caching, OCR fallback, and searchable source-cited document text.
